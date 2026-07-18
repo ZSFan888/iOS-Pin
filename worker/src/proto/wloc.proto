@@ -1,0 +1,11 @@
+syntax = "proto2";
+
+message Coordinate {
+  optional double latitude = 1;
+  optional double longitude = 2;
+  optional double accuracy = 3;
+}
+
+message WlocResponse {
+  optional Coordinate location = 1;
+}

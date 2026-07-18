@@ -1,0 +1,652 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>wloc-pro-console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://api.fontshare.com/v2/css?f[]=general-sans@400,500,600,700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+/* Art direction: network location spoofing console -> precise, technical, quiet-dark
+   Palette: cool neutral dark surfaces, single cyan-teal accent for coordinates/CTAs
+   Typography: General Sans (display/UI) + JetBrains Mono (coordinates/code)
+   Density: dense, tool-like */
+:root, [data-theme="light"] {
+  --color-bg:#f5f6f8; --color-surface:#ffffff; --color-surface-2:#fbfcfd; --color-surface-offset:#eef0f3; --color-surface-offset-2:#e6e9ed; --color-surface-dynamic:#dfe3e8;
+  --color-divider:#dde1e6; --color-border:#d3d8de;
+  --color-text:#12161c; --color-text-muted:#5b6472; --color-text-faint:#9aa3b0; --color-text-inverse:#f7f9fb;
+  --color-primary:#0d8f8a; --color-primary-hover:#0a716d; --color-primary-active:#075653; --color-primary-highlight:#cdeae7;
+  --color-error:#b23b4e; --color-error-highlight:#f3dbe0;
+  --color-success:#3a8a4c; --color-success-highlight:#d7ecdb;
+  --color-gold:#b3801a; --color-gold-highlight:#efe1c4;
+  --radius-sm:.375rem; --radius-md:.5rem; --radius-lg:.75rem; --radius-xl:1rem; --radius-full:9999px;
+  --transition-interactive:180ms cubic-bezier(.16,1,.3,1);
+  --shadow-sm:0 1px 2px oklch(.2 .01 220/.06); --shadow-md:0 4px 12px oklch(.2 .01 220/.08); --shadow-lg:0 12px 32px oklch(.2 .01 220/.14);
+  --font-display:'General Sans','Inter',sans-serif; --font-body:'General Sans','Inter',sans-serif; --font-mono:'JetBrains Mono',monospace;
+}
+[data-theme="dark"] {
+  --color-bg:#0b0f14; --color-surface:#111620; --color-surface-2:#141a26; --color-surface-offset:#171e2b; --color-surface-offset-2:#1c2432; --color-surface-dynamic:#232c3c;
+  --color-divider:#1e2632; --color-border:#2a3342;
+  --color-text:#e7ebf0; --color-text-muted:#8b97a8; --color-text-faint:#586274; --color-text-inverse:#0b0f14;
+  --color-primary:#4fd8cf; --color-primary-hover:#33c2b8; --color-primary-active:#22a199; --color-primary-highlight:#16342f;
+  --color-error:#e2647a; --color-error-highlight:#3a2027;
+  --color-success:#6bc47f; --color-success-highlight:#1f3324;
+  --color-gold:#e0b356; --color-gold-highlight:#3a301d;
+  --shadow-sm:0 1px 2px oklch(0 0 0/.3); --shadow-md:0 4px 16px oklch(0 0 0/.4); --shadow-lg:0 20px 48px oklch(0 0 0/.55);
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;scroll-behavior:smooth}
+body{min-height:100dvh;font-family:var(--font-body);font-size:16px;line-height:1.55;color:var(--color-text);background:var(--color-bg);transition:background var(--transition-interactive),color var(--transition-interactive)}
+:focus-visible{outline:2px solid var(--color-primary);outline-offset:2px;border-radius:var(--radius-sm)}
+button{font:inherit;color:inherit;cursor:pointer;background:none;border:none}
+input,select{font:inherit;color:inherit}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
+
+.topbar{position:sticky;top:0;z-index:40;display:flex;align-items:center;justify-content:space-between;padding:14px clamp(16px,4vw,32px);border-bottom:1px solid var(--color-divider);background:color-mix(in oklab, var(--color-bg) 85%, transparent);backdrop-filter:blur(10px)}
+.brand{display:flex;align-items:center;gap:10px;font-weight:600;font-size:15px;letter-spacing:.01em}
+.brand svg{color:var(--color-primary)}
+.topbar-actions{display:flex;align-items:center;gap:8px}
+.icon-btn{width:36px;height:36px;display:grid;place-items:center;border-radius:var(--radius-full);border:1px solid var(--color-border);color:var(--color-text-muted);transition:background var(--transition-interactive),color var(--transition-interactive),border-color var(--transition-interactive)}
+.icon-btn:hover{background:var(--color-surface-offset);color:var(--color-text)}
+.status-pill{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--color-text-muted);border:1px solid var(--color-border);padding:6px 10px;border-radius:var(--radius-full)}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--color-success)}
+
+.layout{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:0;min-height:calc(100dvh - 61px)}
+.map-pane{position:relative;background:var(--color-surface-offset)}
+#map{position:absolute;inset:0}
+.map-hint{position:absolute;left:16px;bottom:16px;z-index:20;background:color-mix(in oklab,var(--color-surface) 88%,transparent);border:1px solid var(--color-border);border-radius:var(--radius-lg);padding:10px 14px;font-size:13px;color:var(--color-text-muted);box-shadow:var(--shadow-md);max-width:280px}
+.map-hint b{color:var(--color-text);font-weight:600}
+.coord-badge{position:absolute;top:16px;left:16px;z-index:20;display:flex;gap:10px;background:color-mix(in oklab,var(--color-surface) 90%,transparent);border:1px solid var(--color-border);border-radius:var(--radius-lg);padding:10px 14px;box-shadow:var(--shadow-md);font-family:var(--font-mono);font-size:13px}
+.coord-badge span{color:var(--color-text-muted);margin-right:4px}
+
+.panel{background:var(--color-surface);border-left:1px solid var(--color-divider);overflow-y:auto;display:flex;flex-direction:column}
+.panel-section{padding:20px clamp(18px,3vw,24px);border-bottom:1px solid var(--color-divider)}
+.panel-section:last-child{border-bottom:none}
+.section-title{font-size:13px;font-weight:600;color:var(--color-text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:14px}
+.field{margin-bottom:12px}
+.field label{display:block;font-size:13px;color:var(--color-text-muted);margin-bottom:6px}
+.field input,.field select{width:100%;padding:11px 13px;border-radius:var(--radius-md);border:1px solid var(--color-border);background:var(--color-surface-2);color:var(--color-text);transition:border-color var(--transition-interactive),box-shadow var(--transition-interactive)}
+.field input:focus,.field select:focus{border-color:var(--color-primary);box-shadow:0 0 0 3px color-mix(in oklab,var(--color-primary) 20%,transparent)}
+.field input::placeholder{color:var(--color-text-faint)}
+.row-2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:12px 16px;border-radius:var(--radius-md);font-weight:600;font-size:14px;transition:background var(--transition-interactive),transform var(--transition-interactive),box-shadow var(--transition-interactive)}
+.btn-primary{background:var(--color-primary);color:var(--color-text-inverse)}
+.btn-primary:hover{background:var(--color-primary-hover)}
+.btn-primary:active{transform:scale(.98)}
+.btn-ghost{background:var(--color-surface-offset);color:var(--color-text);border:1px solid var(--color-border)}
+.btn-ghost:hover{background:var(--color-surface-offset-2)}
+
+.module-out{margin-top:14px;padding:14px;border-radius:var(--radius-md);background:var(--color-surface-offset);border:1px solid var(--color-border)}
+.module-out code{font-family:var(--font-mono);font-size:12.5px;color:var(--color-primary);word-break:break-all;display:block;margin-bottom:10px}
+.module-out .row-2{margin-top:0}
+.copy-btn{padding:8px 10px;font-size:12.5px;border-radius:var(--radius-sm);background:var(--color-surface-2);border:1px solid var(--color-border);color:var(--color-text-muted);width:auto;display:inline-flex;gap:6px}
+.copy-btn:hover{color:var(--color-text);border-color:var(--color-text-faint)}
+
+.tabs{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap}
+.tab{padding:7px 12px;border-radius:var(--radius-full);font-size:12.5px;border:1px solid var(--color-border);color:var(--color-text-muted);transition:all var(--transition-interactive)}
+.tab[aria-selected="true"]{background:var(--color-primary-highlight);color:var(--color-primary);border-color:transparent;font-weight:600}
+
+.history-list{display:flex;flex-direction:column;gap:8px}
+.history-item{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-radius:var(--radius-md);border:1px solid var(--color-border);background:var(--color-surface-2);transition:background var(--transition-interactive),border-color var(--transition-interactive)}
+.history-item:hover{background:var(--color-surface-offset);border-color:var(--color-text-faint)}
+.history-item .meta{display:flex;flex-direction:column;gap:2px}
+.history-item .name{font-size:13.5px;font-weight:500}
+.history-item .coord{font-family:var(--font-mono);font-size:11.5px;color:var(--color-text-muted)}
+.history-item .actions{display:flex;gap:6px}
+.history-item .go,.history-item .del{width:30px;height:30px;border-radius:var(--radius-full);display:grid;place-items:center;color:var(--color-text-muted);border:1px solid var(--color-border)}
+.history-item .go:hover{color:var(--color-primary);border-color:var(--color-primary)}
+.history-item .del:hover{color:var(--color-error);border-color:var(--color-error)}
+.history-loading{padding:14px;font-size:12.5px;color:var(--color-text-muted);text-align:center}
+.empty-state{display:flex;flex-direction:column;align-items:center;text-align:center;padding:28px 12px;color:var(--color-text-muted)}
+.empty-state svg{color:var(--color-text-faint);margin-bottom:10px}
+.empty-state p{font-size:13px;max-width:24ch}
+
+.toast{position:fixed;bottom:20px;right:20px;z-index:60;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-md);padding:12px 16px;box-shadow:var(--shadow-lg);font-size:13.5px;display:flex;align-items:center;gap:8px;opacity:0;transform:translateY(8px);transition:opacity 220ms ease,transform 220ms ease;pointer-events:none}
+.toast.show{opacity:1;transform:translateY(0)}
+.toast .dot-ok{width:8px;height:8px;border-radius:50%;background:var(--color-success)}
+
+.leaflet-container{background:var(--color-surface-offset)!important;font-family:var(--font-body)}
+.marker-pulse{width:16px;height:16px;border-radius:50%;background:var(--color-primary);border:3px solid color-mix(in oklab,var(--color-primary) 40%, white 0%);box-shadow:0 0 0 6px color-mix(in oklab,var(--color-primary) 22%,transparent)}
+
+@media (max-width: 900px){
+  .layout{grid-template-columns:1fr;grid-template-rows:55vh auto}
+  .panel{border-left:none;border-top:1px solid var(--color-divider)}
+}
+
+.search-box{position:absolute;top:16px;right:16px;left:16px;max-width:360px;z-index:25;display:flex;align-items:center;gap:8px;background:color-mix(in oklab,var(--color-surface) 92%,transparent);border:1px solid var(--color-border);border-radius:var(--radius-lg);padding:10px 14px;box-shadow:var(--shadow-md);color:var(--color-text-muted)}
+.search-box input{flex:1;background:none;border:none;color:var(--color-text);font-size:14px;padding:0}
+.search-box input::placeholder{color:var(--color-text-faint)}
+.search-clear{width:22px;height:22px;display:grid;place-items:center;border-radius:var(--radius-full);color:var(--color-text-muted)}
+.search-clear:hover{background:var(--color-surface-offset);color:var(--color-text)}
+.search-results{position:absolute;top:calc(100% + 8px);left:0;right:0;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-md);box-shadow:var(--shadow-lg);max-height:280px;overflow-y:auto;padding:6px}
+.search-result-item{display:flex;flex-direction:column;gap:2px;padding:9px 10px;border-radius:var(--radius-sm);cursor:pointer;transition:background var(--transition-interactive)}
+.search-result-item:hover,.search-result-item.active{background:var(--color-surface-offset)}
+.search-result-item .name{font-size:13.5px;font-weight:500;color:var(--color-text)}
+.search-result-item .detail{font-size:11.5px;color:var(--color-text-muted);font-family:var(--font-mono)}
+.search-loading{padding:10px 12px;font-size:12.5px;color:var(--color-text-muted)}
+.search-empty{padding:10px 12px;font-size:12.5px;color:var(--color-text-muted)}
+@media (max-width: 900px){
+  .search-box{right:16px;max-width:none}
+  .coord-badge{top:76px}
+}
+
+.device-list{display:flex;flex-direction:column;gap:6px;margin-bottom:12px}
+.device-item{display:flex;align-items:center;justify-content:space-between;padding:9px 11px;border-radius:var(--radius-md);border:1px solid var(--color-border);background:var(--color-surface-2);cursor:pointer;transition:background var(--transition-interactive),border-color var(--transition-interactive)}
+.device-item:hover{background:var(--color-surface-offset)}
+.device-item.active{border-color:var(--color-primary);background:var(--color-primary-highlight)}
+.device-item .name{font-size:13.5px;font-weight:500}
+.device-item .badge{font-size:11px;color:var(--color-text-muted);font-family:var(--font-mono)}
+.device-empty{padding:12px;font-size:12.5px;color:var(--color-text-muted);text-align:center;border:1px dashed var(--color-border);border-radius:var(--radius-md);margin-bottom:12px}
+
+.coord-badge{display:flex;flex-direction:column;gap:6px}
+.coord-badge-row{display:flex;gap:10px}
+.place-name{font-family:var(--font-body);font-size:12.5px;color:var(--color-text-muted);max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.place-name.loading{opacity:.6}
+</style>
+</head>
+<body>
+<a href="#main" class="sr-only">跳到主要内容</a>
+
+<header class="topbar">
+  <div class="brand">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M12 2C7.6 2 4 5.4 4 9.6 4 15 12 22 12 22s8-7 8-12.4C20 5.4 16.4 2 12 2z" stroke="currentColor" stroke-width="1.6"/>
+      <circle cx="12" cy="9.6" r="2.6" fill="currentColor"/>
+    </svg>
+    <span>WLOC Pro Console</span>
+  </div>
+  <div class="topbar-actions">
+    <span class="status-pill"><span class="dot" aria-hidden="true"></span>Worker 未连接</span>
+    <button class="icon-btn" id="themeToggle" aria-label="Switch to light mode">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+    </button>
+  </div>
+</header>
+
+<main id="main" class="layout">
+  <section class="map-pane" aria-label="地图选点区域">
+    <div id="map" role="application" aria-label="点击地图选择虚拟定位坐标"></div>
+    <div class="search-box" role="search">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+      <input id="searchInput" type="text" placeholder="搜索城市或地址，例如 Tokyo, Shibuya" autocomplete="off" aria-label="搜索地点" />
+      <button id="searchClear" class="search-clear" aria-label="清空搜索" hidden>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
+      <div id="searchResults" class="search-results" role="listbox" hidden></div>
+    </div>
+    <div class="coord-badge" aria-live="polite">
+      <div class="coord-badge-row">
+        <div><span>LAT</span><span id="latOut">--</span></div>
+        <div><span>LNG</span><span id="lngOut">--</span></div>
+      </div>
+      <div class="place-name" id="placeName">点击地图以定位</div>
+    </div>
+    <div class="map-hint"><b>点击地图任意位置</b> 选定虚拟坐标，或在右侧手动输入经纬度后回车定位。</div>
+  </section>
+
+  <aside class="panel" aria-label="配置面板">
+    <div class="panel-section">
+      <div class="section-title">设备管理</div>
+      <div id="deviceList" class="device-list"></div>
+      <button class="btn btn-ghost" id="addDevice">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+        添加新设备
+      </button>
+    </div>
+    <div class="panel-section">
+      <div class="section-title">Worker 连接</div>
+      <div class="field">
+        <label for="base">Worker 地址</label>
+        <input id="base" type="url" placeholder="https://your-worker.workers.dev" autocomplete="off" />
+      </div>
+      <div class="field">
+        <label for="token">设备 Token</label>
+        <input id="token" type="text" placeholder="例如 iphone-main" autocomplete="off" />
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <div class="section-title">目标坐标</div>
+      <div class="row-2 field">
+        <div>
+          <label for="lat">纬度</label>
+          <input id="lat" type="text" placeholder="35.676200" inputmode="decimal" />
+        </div>
+        <div>
+          <label for="lng">经度</label>
+          <input id="lng" type="text" placeholder="139.650300" inputmode="decimal" />
+        </div>
+      </div>
+      <button class="btn btn-primary" id="save">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg>
+        保存坐标到 Worker
+      </button>
+    </div>
+
+    <div class="panel-section">
+      <div class="section-title">生成代理模块</div>
+      <div class="tabs" role="tablist" aria-label="选择代理客户端">
+        <button class="tab" role="tab" aria-selected="true" data-client="surge">Surge</button>
+        <button class="tab" role="tab" aria-selected="false" data-client="loon">Loon</button>
+        <button class="tab" role="tab" aria-selected="false" data-client="qx">Quantumult X</button>
+        <button class="tab" role="tab" aria-selected="false" data-client="stash">Stash</button>
+        <button class="tab" role="tab" aria-selected="false" data-client="shadowrocket">小火箭</button>
+      </div>
+      <button class="btn btn-ghost" id="genModule">生成模块地址</button>
+      <div class="module-out">
+        <code id="moduleUrl">尚未生成，先保存坐标再生成模块地址</code>
+        <div class="row-2">
+          <button class="copy-btn" id="copyUrl">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
+            复制地址
+          </button>
+          <button class="copy-btn" id="openUrl">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14L21 3"/></svg>
+            新窗口打开
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel-section" style="flex:1">
+      <div class="section-title">历史收藏坐标</div>
+      <div class="history-list" id="historyList"></div>
+    </div>
+  </aside>
+</main>
+
+<div class="toast" id="toast"><span class="dot-ok" aria-hidden="true"></span><span id="toastText">已复制</span></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+(function(){
+  const t = document.getElementById('themeToggle'), root = document.documentElement;
+  let dark = matchMedia('(prefers-color-scheme:dark)').matches;
+  root.setAttribute('data-theme', dark ? 'dark' : 'light');
+  function paint(){
+    t.setAttribute('aria-label','Switch to ' + (dark ? 'light' : 'dark') + ' mode');
+    t.innerHTML = dark
+      ? '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>'
+      : '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+  }
+  paint();
+  t.addEventListener('click', () => { dark = !dark; root.setAttribute('data-theme', dark ? 'dark' : 'light'); paint(); refreshTiles(); });
+
+  const tileUrls = {
+    light: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+    dark: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+  };
+  const map = L.map('map', { zoomControl: true, attributionControl: true }).setView([35.6762, 139.6503], 5);
+  let tileLayer = L.tileLayer(dark ? tileUrls.dark : tileUrls.light, {
+    maxZoom: 19,
+    attribution: '&copy; OpenStreetMap &copy; CARTO'
+  }).addTo(map);
+  function refreshTiles(){
+    map.removeLayer(tileLayer);
+    tileLayer = L.tileLayer(dark ? tileUrls.dark : tileUrls.light, { maxZoom: 19, attribution: '&copy; OpenStreetMap &copy; CARTO' }).addTo(map);
+  }
+
+  const pulseIcon = L.divIcon({ className: '', html: '<div class="marker-pulse"></div>', iconSize: [16,16] });
+  let marker = null;
+  const latEl = document.getElementById('lat'), lngEl = document.getElementById('lng');
+  const latOut = document.getElementById('latOut'), lngOut = document.getElementById('lngOut');
+
+  const placeNameEl = document.getElementById('placeName');
+  let reverseGeoTimer = null;
+  let reverseGeoAbort = null;
+  let lastReverseLabel = '';
+
+  function setCoord(lat, lng, panTo, skipReverse){
+    latEl.value = lat.toFixed(6);
+    lngEl.value = lng.toFixed(6);
+    latOut.textContent = lat.toFixed(6);
+    lngOut.textContent = lng.toFixed(6);
+    if (marker) marker.setLatLng([lat, lng]); else marker = L.marker([lat, lng], { icon: pulseIcon }).addTo(map);
+    if (panTo) map.panTo([lat, lng]);
+    if (!skipReverse) scheduleReverseGeocode(lat, lng);
+  }
+
+  function scheduleReverseGeocode(lat, lng){
+    if (reverseGeoTimer) clearTimeout(reverseGeoTimer);
+    placeNameEl.textContent = '正在解析地点名…';
+    placeNameEl.classList.add('loading');
+    reverseGeoTimer = setTimeout(() => runReverseGeocode(lat, lng), 500);
+  }
+
+  async function runReverseGeocode(lat, lng){
+    if (reverseGeoAbort) reverseGeoAbort.abort();
+    reverseGeoAbort = new AbortController();
+    try {
+      const url = 'https://nominatim.openstreetmap.org/reverse?format=json&lat=' + lat + '&lon=' + lng + '&zoom=14';
+      const res = await fetch(url, { signal: reverseGeoAbort.signal, headers: { 'Accept-Language': 'zh-CN,zh,en' } });
+      const data = await res.json();
+      const addr = data.address || {};
+      const label = addr.suburb || addr.neighbourhood || addr.city_district || addr.city || addr.town || addr.village || addr.county || (data.display_name ? data.display_name.split(',')[0] : null);
+      const region = addr.state || addr.country || '';
+      const finalLabel = label ? (region && label !== region ? label + ', ' + region : label) : (lat.toFixed(4) + ', ' + lng.toFixed(4));
+      lastReverseLabel = finalLabel;
+      placeNameEl.textContent = finalLabel;
+      placeNameEl.classList.remove('loading');
+    } catch (err) {
+      if (err.name !== 'AbortError') {
+        lastReverseLabel = '';
+        placeNameEl.textContent = lat.toFixed(4) + ', ' + lng.toFixed(4);
+        placeNameEl.classList.remove('loading');
+      }
+    }
+  }
+
+  map.on('click', (e) => setCoord(e.latlng.lat, e.latlng.lng, false));
+  [latEl, lngEl].forEach(el => el.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      const lat = parseFloat(latEl.value), lng = parseFloat(lngEl.value);
+      if (Number.isFinite(lat) && Number.isFinite(lng)) setCoord(lat, lng, true);
+    }
+  }));
+
+  const toast = document.getElementById('toast'), toastText = document.getElementById('toastText');
+  function showToast(msg){
+    toastText.textContent = msg;
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 2200);
+  }
+
+
+  let devices = [];
+  let activeDeviceIdx = -1;
+  const deviceListEl = document.getElementById('deviceList');
+
+  function renderDevices(){
+    if (devices.length === 0) {
+      deviceListEl.innerHTML = '<div class="device-empty">还没有设备，先填写 Worker 地址与 Token 后点击“添加新设备”</div>';
+      return;
+    }
+    deviceListEl.innerHTML = devices.map((d, idx) => (
+      '<div class="device-item' + (idx === activeDeviceIdx ? ' active' : '') + '" data-idx="' + idx + '">' +
+        '<span class="name">' + d.token + '</span><span class="badge">' + d.base.replace(/^https?:\/\//,'') + '</span>' +
+      '</div>'
+    )).join('');
+  }
+  renderDevices();
+
+  function selectDevice(idx){
+    const d = devices[idx];
+    if (!d) return;
+    activeDeviceIdx = idx;
+    baseEl.value = d.base;
+    tokenEl.value = d.token;
+    renderDevices();
+    loadHistory();
+  }
+
+  deviceListEl.addEventListener('click', (e) => {
+    const item = e.target.closest('.device-item');
+    if (!item) return;
+    selectDevice(Number(item.dataset.idx));
+  });
+
+  document.getElementById('addDevice').addEventListener('click', () => {
+    const b = currentBase(), t = currentToken();
+    if (!b || !t) { showToast('请先填写 Worker 地址和 Token'); return; }
+    const exists = devices.findIndex(d => d.base === b && d.token === t);
+    if (exists >= 0) {
+      activeDeviceIdx = exists;
+      showToast('该设备已存在');
+    } else {
+      devices.unshift({ base: b, token: t });
+      activeDeviceIdx = 0;
+      showToast('已添加设备 ' + t);
+    }
+    renderDevices();
+  });
+
+  let history = [];
+  const historyList = document.getElementById('historyList');
+  const baseEl = document.getElementById('base');
+  const tokenEl = document.getElementById('token');
+
+  function currentBase(){ return baseEl.value.trim().replace(/\/$/, ''); }
+  function currentToken(){ return tokenEl.value.trim(); }
+
+  function renderHistory(){
+    if (history.length === 0) {
+      historyList.innerHTML = '<div class="empty-state">' +
+        '<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M12 2C7.6 2 4 5.4 4 9.6 4 15 12 22 12 22s8-7 8-12.4C20 5.4 16.4 2 12 2z"/><circle cx="12" cy="9.6" r="2.6"/></svg>' +
+        '<p>还没有保存过的坐标，选点并保存后会出现在这里</p></div>';
+      return;
+    }
+    historyList.innerHTML = history.map((h, idx) => (
+      '<div class="history-item">' +
+        '<div class="meta"><span class="name">' + h.label + '</span><span class="coord">' + h.lat.toFixed(4) + ', ' + h.lng.toFixed(4) + '</span></div>' +
+        '<div class="actions">' +
+          '<button class="go" data-idx="' + idx + '" aria-label="定位到该坐标"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg></button>' +
+          '<button class="del" data-idx="' + idx + '" aria-label="删除该收藏"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6"/></svg></button>' +
+        '</div>' +
+      '</div>'
+    )).join('');
+  }
+
+  async function loadHistory(){
+    const b = currentBase(), t = currentToken();
+    if (!b || !t) { history = []; renderHistory(); return; }
+    historyList.innerHTML = '<div class="history-loading">加载历史收藏…</div>';
+    try {
+      const res = await fetch(b + '/api/history/' + t);
+      const data = await res.json();
+      history = Array.isArray(data.items) ? data.items : [];
+    } catch (err) {
+      history = [];
+    }
+    renderHistory();
+  }
+  renderHistory();
+
+  let historyDebounce = null;
+  [baseEl, tokenEl].forEach(el => el.addEventListener('input', () => {
+    if (historyDebounce) clearTimeout(historyDebounce);
+    historyDebounce = setTimeout(loadHistory, 500);
+  }));
+
+  historyList.addEventListener('click', async (e) => {
+    const goBtn = e.target.closest('.go');
+    const delBtn = e.target.closest('.del');
+    if (goBtn) {
+      const h = history[Number(goBtn.dataset.idx)];
+      if (h) {
+        setCoord(h.lat, h.lng, true, true);
+        lastReverseLabel = h.label;
+        placeNameEl.textContent = h.label;
+        placeNameEl.classList.remove('loading');
+      }
+      return;
+    }
+    if (delBtn) {
+      const idx = Number(delBtn.dataset.idx);
+      const b = currentBase(), t = currentToken();
+      if (!b || !t) return;
+      try {
+        const res = await fetch(b + '/api/history/' + t + '/' + idx, { method: 'DELETE' });
+        const data = await res.json();
+        history = Array.isArray(data.items) ? data.items : history;
+        renderHistory();
+        showToast('已删除该收藏');
+      } catch (err) {
+        showToast('删除失败');
+      }
+    }
+  });
+
+  document.getElementById('save').addEventListener('click', async () => {
+    const b = currentBase();
+    const t = currentToken();
+    const lat = parseFloat(latEl.value), lng = parseFloat(lngEl.value);
+    if (!b || !t || !Number.isFinite(lat) || !Number.isFinite(lng)) {
+      showToast('请填写 Worker 地址、Token 和坐标');
+      return;
+    }
+    try {
+      await fetch(b + '/api/location/' + t, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ lat, lng })
+      });
+      const label = lastReverseLabel || (searchInput && searchInput.value.trim() ? searchInput.value.trim() : (lat.toFixed(4) + ', ' + lng.toFixed(4)));
+      const res = await fetch(b + '/api/history/' + t, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ label, lat, lng })
+      });
+      const data = await res.json();
+      history = Array.isArray(data.items) ? data.items : history;
+      renderHistory();
+      showToast('坐标已保存到 ' + t);
+    } catch (err) {
+      showToast('保存失败，请检查 Worker 地址');
+    }
+  });
+
+  let activeClient = 'surge';
+  document.querySelectorAll('.tab').forEach(tab => tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t2 => t2.setAttribute('aria-selected', 'false'));
+    tab.setAttribute('aria-selected', 'true');
+    activeClient = tab.dataset.client;
+  }));
+
+  const moduleUrlEl = document.getElementById('moduleUrl');
+  document.getElementById('genModule').addEventListener('click', () => {
+    const base = document.getElementById('base').value.trim().replace(/\/$/, '');
+    const token = document.getElementById('token').value.trim();
+    if (!base || !token) { showToast('请先填写 Worker 地址和 Token'); return; }
+    moduleUrlEl.textContent = base + '/api/module/' + activeClient + '/' + token;
+  });
+  document.getElementById('copyUrl').addEventListener('click', async () => {
+    const text = moduleUrlEl.textContent;
+    if (!text || text.startsWith('尚未生成')) { showToast('请先生成模块地址'); return; }
+    try { await navigator.clipboard.writeText(text); showToast('已复制模块地址'); } catch (e) { showToast('复制失败'); }
+  });
+  document.getElementById('openUrl').addEventListener('click', () => {
+    const text = moduleUrlEl.textContent;
+    if (!text || text.startsWith('尚未生成')) { showToast('请先生成模块地址'); return; }
+    window.open(text, '_blank', 'noopener,noreferrer');
+  });
+
+  const searchInput = document.getElementById('searchInput');
+  const searchResults = document.getElementById('searchResults');
+  const searchClear = document.getElementById('searchClear');
+  let searchTimer = null;
+  let searchAbort = null;
+  let activeIndex = -1;
+  let currentResults = [];
+
+  function clearResults(){
+    searchResults.innerHTML = '';
+    searchResults.hidden = true;
+    activeIndex = -1;
+    currentResults = [];
+  }
+
+  function renderResults(items){
+    currentResults = items;
+    activeIndex = -1;
+    if (items.length === 0) {
+      searchResults.innerHTML = '<div class="search-empty">没有找到匹配的地点</div>';
+      searchResults.hidden = false;
+      return;
+    }
+    searchResults.innerHTML = items.map((item, idx) => (
+      '<div class="search-result-item" role="option" data-idx="' + idx + '">' +
+        '<span class="name">' + item.label + '</span>' +
+        '<span class="detail">' + item.lat.toFixed(4) + ', ' + item.lng.toFixed(4) + '</span>' +
+      '</div>'
+    )).join('');
+    searchResults.hidden = false;
+  }
+
+  function selectResult(item){
+    setCoord(item.lat, item.lng, true, true);
+    lastReverseLabel = item.label;
+    placeNameEl.textContent = item.label;
+    placeNameEl.classList.remove('loading');
+    map.setZoom(13);
+    searchInput.value = item.label;
+    clearResults();
+    showToast('已定位到 ' + item.label);
+  }
+
+  async function runSearch(query){
+    if (searchAbort) searchAbort.abort();
+    searchAbort = new AbortController();
+    searchResults.innerHTML = '<div class="search-loading">搜索中…</div>';
+    searchResults.hidden = false;
+    try {
+      const url = 'https://nominatim.openstreetmap.org/search?format=json&limit=6&q=' + encodeURIComponent(query);
+      const res = await fetch(url, { signal: searchAbort.signal, headers: { 'Accept-Language': 'zh-CN,zh,en' } });
+      const data = await res.json();
+      const items = data.map(d => ({ label: d.display_name, lat: parseFloat(d.lat), lng: parseFloat(d.lon) }));
+      renderResults(items);
+    } catch (err) {
+      if (err.name !== 'AbortError') {
+        searchResults.innerHTML = '<div class="search-empty">搜索失败，请检查网络</div>';
+        searchResults.hidden = false;
+      }
+    }
+  }
+
+  searchInput.addEventListener('input', () => {
+    const q = searchInput.value.trim();
+    searchClear.hidden = q.length === 0;
+    if (searchTimer) clearTimeout(searchTimer);
+    if (q.length < 2) { clearResults(); return; }
+    searchTimer = setTimeout(() => runSearch(q), 400);
+  });
+
+  searchInput.addEventListener('keydown', (e) => {
+    if (searchResults.hidden || currentResults.length === 0) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      activeIndex = Math.min(activeIndex + 1, currentResults.length - 1);
+      updateActive();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      activeIndex = Math.max(activeIndex - 1, 0);
+      updateActive();
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      const idx = activeIndex >= 0 ? activeIndex : 0;
+      if (currentResults[idx]) selectResult(currentResults[idx]);
+    } else if (e.key === 'Escape') {
+      clearResults();
+    }
+  });
+
+  function updateActive(){
+    const items = searchResults.querySelectorAll('.search-result-item');
+    items.forEach((el, idx) => el.classList.toggle('active', idx === activeIndex));
+    if (items[activeIndex]) items[activeIndex].scrollIntoView({ block: 'nearest' });
+  }
+
+  searchResults.addEventListener('click', (e) => {
+    const el = e.target.closest('.search-result-item');
+    if (!el) return;
+    const idx = Number(el.dataset.idx);
+    if (currentResults[idx]) selectResult(currentResults[idx]);
+  });
+
+  searchClear.addEventListener('click', () => {
+    searchInput.value = '';
+    searchClear.hidden = true;
+    clearResults();
+    searchInput.focus();
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.search-box')) clearResults();
+  });
+})();
+</script>
+</body>
+</html>

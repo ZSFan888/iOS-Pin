@@ -1,0 +1,5 @@
+{
+  "name": "wloc-pro",
+  "private": true,
+  "workspaces": ["worker", "frontend"]
+}
