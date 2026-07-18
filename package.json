@@ -2,7 +2,7 @@
   "name": "ios-pin",
   "private": true,
   "workspaces": [
-    "worker",
-    "frontend"
+    "Worker",
+    "Frontend"
   ]
 }

@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { decimalToMicro, spoofAppleWlocResponse } from './proto/apple-wloc'
+import { decimalToMicro, spoofAppleWlocResponse } from './Proto/Apple-wloc'
 
 type Bindings = {
   LOCATIONS: KVNamespace

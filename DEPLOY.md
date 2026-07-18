@@ -6,12 +6,12 @@ Step-by-step instructions to get the Worker running on your own Cloudflare accou
 
 - Node.js 20+
 - A Cloudflare account
-- Wrangler CLI (installed automatically via `npm install` in `worker/`)
+- Wrangler CLI (installed automatically via `npm install` in `Worker/`)
 
 ## 2. Install dependencies
 
 ```bash
-cd worker
+cd Worker
 npm install
 ```
 
@@ -27,7 +27,7 @@ npx wrangler login
 npx wrangler kv namespace create ios-pin-locations
 ```
 
-This prints a namespace `id`. Copy it into `worker/wrangler.jsonc`:
+This prints a namespace `id`. Copy it into `Worker/wrangler.jsonc`:
 
 ```jsonc
 "kv_namespaces": [
@@ -61,7 +61,7 @@ npm run dev
 ```
 
 Wrangler will print a local URL (typically `http://localhost:8787`). Use this as the
-"Worker 地址" value in `frontend/public/console.html` while testing.
+"Worker 地址" value in `Frontend/Public/Console.html` while testing.
 
 ## 7. Deploy to production
 
@@ -75,7 +75,7 @@ Wrangler prints your live Worker URL, e.g. `https://ios-pin.<your-subdomain>.wor
 
 ## 8. Point the frontend at your Worker
 
-Open `frontend/public/console.html` (or host it on Cloudflare Pages) and enter:
+Open `Frontend/Public/Console.html` (or host it on Cloudflare Pages) and enter:
 
 - Worker 地址: your deployed Worker URL
 - 设备 Token: any identifier you choose, e.g. `iphone-main`
@@ -92,13 +92,13 @@ Make sure MITM hostnames include both `gs-loc.apple.com` and `gs-loc-cn.apple.co
 Before relying on this in daily use, capture a real response and run the inspector:
 
 ```bash
-node scripts/inspect-capture.mjs test/fixtures/sample-01.bin
+node Scripts/Inspect-capture.mjs Test/Fixtures/sample-01.bin
 ```
 
-Compare the printed field layout against `src/proto/apple-wloc.ts` and adjust if Apple's
+Compare the printed field layout against `Src/Proto/Apple-wloc.ts` and adjust if Apple's
 response structure differs from the assumptions documented there.
 
 ## Continuous integration
 
-Every push touching `worker/**` triggers `.github/workflows/worker-ci.yml`, which runs the
+Every push touching `Worker/**` triggers `.github/workflows/Worker-ci.yml`, which runs the
 Vitest suite and a TypeScript type check. Keep this green before merging changes.

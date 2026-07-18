@@ -1,7 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "ios-pin",
-  "main": "src/index.ts",
+  "main": "Src/Index.ts",
   "compatibility_date": "2026-07-18",
   // Create with: wrangler kv namespace create ios-pin-locations
   // Then replace the id below with the returned namespace id.

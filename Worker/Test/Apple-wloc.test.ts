@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { spoofAppleWlocResponse, decimalToMicro } from '../src/proto/apple-wloc'
+import { spoofAppleWlocResponse, decimalToMicro } from '../Src/Proto/Apple-wloc'
 
 function buildFakeWlocResponse(latMicro: bigint, lngMicro: bigint): Uint8Array {
   const header = new Uint8Array(10).fill(0)
@@ -62,7 +62,7 @@ describe('capture fixture regression (manual)', () => {
   it.skip('replace with a real captured gs-loc response to validate field offsets', () => {
     // Steps:
     // 1. Capture a real response body via Surge/Loon MITM logging on gs-loc.apple.com/clls/wloc
-    // 2. Save raw bytes to worker/test/fixtures/sample-01.bin
+    // 2. Save raw bytes to Worker/Test/Fixtures/sample-01.bin
     // 3. Load it here with Node's fs.readFileSync, run spoofAppleWlocResponse, and manually
     //    decode the result with a protobuf inspector to confirm lat/lng landed correctly.
     expect(true).toBe(true)

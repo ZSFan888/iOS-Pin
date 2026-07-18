@@ -4,10 +4,10 @@ A cleaner, extensible reimplementation inspired by Apple WLOC response spoofing 
 
 ## Monorepo layout
 
-- `worker/`: Cloudflare Worker powered by Hono
-- `frontend/`: static map UI for coordinate selection
-- `modules-templates/`: proxy module templates for Surge/Loon/QX/Stash/Shadowrocket
-- `shortcuts/`: iOS shortcut placeholders
+- `Worker/`: Cloudflare Worker powered by Hono
+- `Frontend/`: static map UI for coordinate selection
+- `Modules-Templates/`: proxy module templates for Surge/Loon/QX/Stash/Shadowrocket
+- `Shortcuts/`: iOS shortcut placeholders
 
 ## Key ideas
 
@@ -21,19 +21,19 @@ A cleaner, extensible reimplementation inspired by Apple WLOC response spoofing 
 ### Worker
 
 ```bash
-cd worker
+cd Worker
 npm install
 npm run dev
 ```
 
 ### Frontend
 
-Open `frontend/public/console.html` directly for static preview, or serve it with any static server.
+Open `Frontend/Public/Console.html` directly for static preview, or serve it with any static server.
 
 ## Deployment notes
 
 1. Create KV namespace and bind it as `LOCATIONS`.
-2. Update `worker/wrangler.jsonc` with your Worker name and KV IDs.
+2. Update `Worker/wrangler.jsonc` with your Worker name and KV IDs.
 3. Deploy with Wrangler.
 4. Set your generated Worker URL inside the client proxy modules.
 
@@ -64,7 +64,7 @@ The protobuf field layout is based on public reverse engineering and may need ad
 
 ## Frontend progress
 
-- Added a dark/light console UI (`frontend/public/console.html`) using Leaflet for map-based coordinate picking.
+- Added a dark/light console UI (`Frontend/Public/Console.html`) using Leaflet for map-based coordinate picking.
 - Added debounced location search backed by OpenStreetMap Nominatim, with keyboard navigation (arrow keys + enter) and result list.
 - Added coordinate save flow calling `/api/location/:token`, module URL generation per client, copy/open actions, and an in-memory recent-location history list.
 
@@ -97,17 +97,17 @@ The protobuf field layout is based on public reverse engineering and may need ad
 
 ## Protobuf verification tooling
 
-- Added `worker/test/apple-wloc.test.ts` (Vitest) covering: field replacement correctness, short-body passthrough, and `decimalToMicro` scaling/rounding.
-- Added `worker/test/fixtures/README.md` explaining how to safely store real capture samples (redacted, no BSSID/PII) for regression testing.
-- Added `worker/scripts/inspect-capture.mjs`, a standalone protobuf field dumper — run `node scripts/inspect-capture.mjs test/fixtures/sample-01.bin` to visually confirm field numbers/wire types in a real Apple WLOC response before trusting the spoofer against it.
-- Added `.github/workflows/worker-ci.yml` to run `npm test` and `tsc --noEmit` on every push/PR touching `worker/**`.
+- Added `Worker/Test/Apple-wloc.test.ts` (Vitest) covering: field replacement correctness, short-body passthrough, and `decimalToMicro` scaling/rounding.
+- Added `Worker/Test/Fixtures/README.md` explaining how to safely store real capture samples (redacted, no BSSID/PII) for regression testing.
+- Added `Worker/Scripts/Inspect-capture.mjs`, a standalone protobuf field dumper — run `node Scripts/Inspect-capture.mjs Test/Fixtures/sample-01.bin` to visually confirm field numbers/wire types in a real Apple WLOC response before trusting the spoofer against it.
+- Added `.github/workflows/Worker-ci.yml` to run `npm test` and `tsc --noEmit` on every push/PR touching `Worker/**`.
 
 ## Next validation step (manual, on your device)
 
 1. Capture a real `gs-loc.apple.com/clls/wloc` response body via Surge/Loon MITM logging.
-2. Save the raw bytes as `worker/test/fixtures/sample-01.bin`.
-3. Run `node scripts/inspect-capture.mjs test/fixtures/sample-01.bin` to inspect the actual field layout.
-4. Compare against the assumptions in `worker/src/proto/apple-wloc.ts` and adjust field numbers/offsets if they differ.
+2. Save the raw bytes as `Worker/Test/Fixtures/sample-01.bin`.
+3. Run `node Scripts/Inspect-capture.mjs Test/Fixtures/sample-01.bin` to inspect the actual field layout.
+4. Compare against the assumptions in `Worker/Src/Proto/Apple-wloc.ts` and adjust field numbers/offsets if they differ.
 5. Add a fixture-based test case once the layout is confirmed.
 
 
