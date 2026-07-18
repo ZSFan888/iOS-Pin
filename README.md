@@ -1,22 +1,22 @@
 # iOS Pin
 
-A cleaner, extensible reimplementation inspired by Apple WLOC response spoofing workflows.
+一个更简洁、可扩展的重新实现，灵感来自 Apple WLOC 网络定位响应篡改的工作原理。
 
-## Monorepo layout
+## 项目结构
 
-- `Worker/`: Cloudflare Worker powered by Hono
-- `Frontend/`: static map UI for coordinate selection
-- `Modules-Templates/`: proxy module templates for Surge/Loon/QX/Stash/Shadowrocket
-- `Shortcuts/`: iOS shortcut placeholders
+- `Worker/`：基于 Hono 构建的 Cloudflare Worker 后端
+- `Frontend/`：用于选择坐标的静态地图 UI
+- `Modules-Templates/`：Surge / Loon / QX / Stash / Shadowrocket 的代理模块模板
+- `Shortcuts/`：iOS 快捷指令占位目录
 
-## Key ideas
+## 核心原理
 
-- Intercept `gs-loc.apple.com` traffic through client proxy tools
-- Parse/replace protobuf response payloads in Worker
-- Store selected coordinates by token in KV
-- Generate client-specific module files dynamically
+- 通过代理客户端拦截 `gs-loc.apple.com` 的网络流量
+- 在 Worker 中解析并替换 protobuf 响应中的坐标数据
+- 使用 KV 按设备 Token 存储所选坐标
+- 动态生成各客户端专属的模块配置文件
 
-## Local development
+## 本地开发
 
 ### Worker
 
@@ -26,98 +26,91 @@ npm install
 npm run dev
 ```
 
-### Frontend
+### 前端
 
-Open `Frontend/Public/Console.html` directly for static preview, or serve it with any static server.
+直接打开 `Frontend/Public/Console.html` 进行静态预览，或用任意静态服务器托管。
 
-## Deployment notes
+## 部署要点
 
-1. Create KV namespace and bind it as `LOCATIONS`.
-2. Update `Worker/wrangler.jsonc` with your Worker name and KV IDs.
-3. Deploy with Wrangler.
-4. Set your generated Worker URL inside the client proxy modules.
+1. 创建 KV 命名空间并绑定为 `LOCATIONS`。
+2. 在 `Worker/wrangler.jsonc` 中更新 Worker 名称与 KV ID。
+3. 使用 Wrangler 部署。
+4. 把生成的 Worker 地址填入客户端代理模块中。
 
-## Push to GitHub with PAT
+## 使用 PAT 推送到 GitHub
 
 ```bash
 git init
 git add .
 git commit -m "feat: init ios-pin scaffold"
 git branch -M main
-git remote add origin https://<YOUR_PAT>@github.com/<YOUR_USERNAME>/<YOUR_REPO>.git
+git remote add origin https://<你的PAT>@github.com/<你的用户名>/<你的仓库>.git
 git push -u origin main
 ```
 
-Use a PAT with repository write permission. Keep the token secret.
+请使用具备仓库写权限的 PAT，并妥善保管好这个令牌。
 
+## 当前实现进度
 
-## Current implementation progress
+- 新增了中继接口 `POST /apple/clls/wloc/:token`，用于把原始 WLOC 请求转发到 Apple 上游，并改写返回坐标。
+- 新增了一个基于社区逆向结构的轻量级 protobuf 字节改写器。
+- 客户端脚本现在通过 Worker 中继完成改写，而不是直接原地修改 `$response.body`。
 
-- Added a relay endpoint `POST /apple/clls/wloc/:token` to forward original Apple WLOC requests upstream and rewrite response coordinates.
-- Added a lightweight protobuf byte rewriter for Apple WLOC responses based on community-reversed message layouts.
-- Generated client script endpoints now relay through Worker instead of editing `$response.body` in place.
+## 重要提醒
 
-## Important caveat
+protobuf 字段布局基于公开的逆向工程结果，如果 Apple 更改了响应结构，可能需要相应调整。上线前请务必用自己的抓包数据进行验证。
 
-The protobuf field layout is based on public reverse engineering and may need adjustment if Apple changes the response structure. Test with your own captures before production use.
+## 前端进展
 
+- 新增了明暗双主题控制台界面（`Frontend/Public/Console.html`），使用 Leaflet 实现地图选点。
+- 新增了基于 OpenStreetMap Nominatim 的防抖地点搜索，支持键盘方向键与回车选择。
+- 新增了坐标保存流程（调用 `/api/location/:token`）、按客户端生成模块地址、复制/打开操作，以及一份内存态的最近坐标历史列表。
 
-## Frontend progress
+## 已知限制
 
-- Added a dark/light console UI (`Frontend/Public/Console.html`) using Leaflet for map-based coordinate picking.
-- Added debounced location search backed by OpenStreetMap Nominatim, with keyboard navigation (arrow keys + enter) and result list.
-- Added coordinate save flow calling `/api/location/:token`, module URL generation per client, copy/open actions, and an in-memory recent-location history list.
+- 历史列表目前仅存在内存中（刷新页面会重置）。后续可以考虑把它持久化到 Worker KV 或 D1。
+- Nominatim 有速率限制（约每秒 1 次请求），只适合个人使用；生产环境流量建议换成付费地理编码服务。
 
-## Known limitations
+## 历史记录持久化
 
-- History list is in-memory only (resets on page reload). Persisting it to Worker KV or D1 is a good next step.
-- Nominatim has rate limits (~1 req/sec) suitable for personal use only; for production traffic, swap in a paid geocoding API.
+- Worker 现在提供 `/api/history/:token`（GET/POST）与 `/api/history/:token/:index`（DELETE）接口，复用同一个 `LOCATIONS` KV 命名空间，以 `history:<token>` 为键，每个设备 Token 最多保留 20 条最近记录。
+- 前端在 Worker 地址和 Token 都填写完成后会自动加载历史记录，带 500ms 防抖，并在每次保存或删除后刷新。
+- 保存坐标时会同步写入一条历史记录，标签优先使用当前搜索结果名称，否则退回经纬度文本，并对几乎相同的坐标做去重处理。
 
+## 多设备管理（前端）
 
-## History persistence
+- 在 Worker 连接区域上方新增了会话内的设备列表，可以注册多组 `{base, token}` 组合并一键切换。
+- 选择某个设备会自动回填 Worker 地址与 Token 字段，并立即重新加载该设备对应的历史记录。
+- 设备列表目前仅存在于当前会话内存中（受限于沙箱化 iframe 环境不支持 `localStorage`）——如果需要跨会话的持久化多设备管理，下一步可以考虑把设备列表本身存到 Worker KV 中的用户级键下。
 
-- Worker now exposes `/api/history/:token` (GET/POST) and `/api/history/:token/:index` (DELETE), backed by the same `LOCATIONS` KV namespace under a `history:<token>` key, storing up to 20 recent entries per device token.
-- Frontend loads history automatically once both Worker base URL and token are filled in, debounced by 500ms, and refreshes after every save or delete.
-- Saving a coordinate now also pushes a history entry using the current search label (if any) or the raw lat/lng as fallback label, deduplicating near-identical coordinates.
+## 反向地理编码
 
+- 点击地图后会触发一次防抖（500ms）的反向地理编码请求，调用 Nominatim 的 `/reverse` 接口，在坐标徽标区域展示可读的地点名称（社区/城市 + 省州/国家）。
+- 选择搜索结果或历史记录时会跳过反向地理编码请求，直接复用已知的标签，避免重复请求。
+- 保存坐标时会优先使用解析出的地点名称作为历史标签，其次是搜索框文本，最后才退回原始经纬度。
 
-## Multi-device management (frontend)
+## Protobuf 验证工具
 
-- Added an in-session device list above the Worker connection fields, letting you register multiple `{base, token}` pairs and switch between them with one click.
-- Selecting a device auto-fills the Worker address and token fields, then reloads that device's saved history immediately.
-- Device list is intentionally in-memory only (no localStorage, per sandboxed iframe constraints) — for durable multi-device persistence across sessions, store the device list itself in Worker KV under a user-level key next.
+- 新增 `Worker/Test/Apple-wloc.test.ts`（基于 Vitest），覆盖字段替换正确性、过短响应体的直通逻辑，以及 `decimalToMicro` 的缩放与四舍五入。
+- 新增 `Worker/Test/Fixtures/README.md`，说明如何安全地存放真实抓包样本（需脱敏，不包含 BSSID / 个人信息）用于回归测试。
+- 新增 `Worker/Scripts/Inspect-capture.mjs`，一个独立的 protobuf 字段转储工具——运行 `node Scripts/Inspect-capture.mjs Test/Fixtures/sample-01.bin` 即可直观确认真实 Apple WLOC 响应中的字段编号与 wire type，验证后再信任改写逻辑。
+- 新增 `.github/workflows/Worker-ci.yml`，每次改动涉及 `Worker/**` 的推送/PR 都会自动运行 `npm test` 和 `tsc --noEmit`。
 
+## 下一步验证（需要你在真机上手动完成）
 
-## Reverse geocoding
+1. 通过 Surge/Loon 的 MITM 日志功能，抓取一份真实的 `gs-loc.apple.com/clls/wloc` 响应体。
+2. 把原始字节保存为 `Worker/Test/Fixtures/sample-01.bin`。
+3. 运行 `node Scripts/Inspect-capture.mjs Test/Fixtures/sample-01.bin` 查看实际的字段布局。
+4. 对照 `Worker/Src/Proto/Apple-wloc.ts` 中的假设，如有差异则调整字段编号或偏移量。
+5. 布局确认无误后，补充一个基于该 fixture 的测试用例。
 
-- Map clicks now trigger a debounced (500ms) reverse geocode call against Nominatim's `/reverse` endpoint, showing a human-readable place name (neighbourhood/city + region) inside the coordinate badge.
-- Selecting a search result or a saved history item skips the reverse geocode call and reuses the already-known label, avoiding redundant requests.
-- Saving a coordinate now prefers the resolved place name as the history label, falling back to the search input text, then to raw lat/lng if neither is available.
+## 访问控制（新增）
 
+- Worker 现在支持两种可选的环境密钥保护：`API_KEY`（所有写接口都需要在 `x-wloc-key` 请求头中携带该密钥）和 `ALLOWED_TOKENS`（用逗号分隔的允许使用的设备 Token 白名单）。
+- 两者都是可选开启——如果未设置，Worker 行为与之前一致（开放写入），适合个人/本地使用，但不建议在公开分享 Worker 地址时保持这种状态。
+- 前端新增了"API Key"输入框；填写后会在保存/删除请求中作为 `x-wloc-key` 请求头发送。
+- 完整配置流程（包括 `wrangler secret put` 用法与本地开发用的 `.dev.vars`）请参见 `DEPLOY.md`。
 
-## Protobuf verification tooling
+## 完整部署指南
 
-- Added `Worker/Test/Apple-wloc.test.ts` (Vitest) covering: field replacement correctness, short-body passthrough, and `decimalToMicro` scaling/rounding.
-- Added `Worker/Test/Fixtures/README.md` explaining how to safely store real capture samples (redacted, no BSSID/PII) for regression testing.
-- Added `Worker/Scripts/Inspect-capture.mjs`, a standalone protobuf field dumper — run `node Scripts/Inspect-capture.mjs Test/Fixtures/sample-01.bin` to visually confirm field numbers/wire types in a real Apple WLOC response before trusting the spoofer against it.
-- Added `.github/workflows/Worker-ci.yml` to run `npm test` and `tsc --noEmit` on every push/PR touching `Worker/**`.
-
-## Next validation step (manual, on your device)
-
-1. Capture a real `gs-loc.apple.com/clls/wloc` response body via Surge/Loon MITM logging.
-2. Save the raw bytes as `Worker/Test/Fixtures/sample-01.bin`.
-3. Run `node Scripts/Inspect-capture.mjs Test/Fixtures/sample-01.bin` to inspect the actual field layout.
-4. Compare against the assumptions in `Worker/Src/Proto/Apple-wloc.ts` and adjust field numbers/offsets if they differ.
-5. Add a fixture-based test case once the layout is confirmed.
-
-
-## Access control (new)
-
-- Worker now supports two optional protections via environment secrets: `API_KEY` (shared secret required in the `x-wloc-key` header for all write endpoints) and `ALLOWED_TOKENS` (comma-separated allowlist restricting which device tokens can be used at all).
-- Both are opt-in — if unset, the Worker behaves as before (open write access), which is fine for personal/local use but not recommended for a publicly shared Worker URL.
-- Frontend now has an "API Key" field; when filled, it's sent as `x-wloc-key` on save/delete requests.
-- See `DEPLOY.md` for the full setup walkthrough, including `wrangler secret put` usage and `.dev.vars` for local development.
-
-## Full deployment walkthrough
-
-See [`DEPLOY.md`](./DEPLOY.md) for step-by-step Wrangler KV setup, secrets configuration, local dev, and production deploy instructions.
+详细的 Wrangler KV 配置、密钥设置、本地开发与生产部署步骤，请参见 [`DEPLOY.md`](./DEPLOY.md)。
