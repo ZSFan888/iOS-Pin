@@ -52,7 +52,8 @@ git push -u origin main
 
 ## 当前实现进度
 
-- 新增了中继接口 `POST /apple/clls/wloc/:token`，用于把原始 WLOC 请求转发到 Apple 上游，并改写返回坐标。
+- 新增了中继接口 `POST /apple/clls/wloc/:token` 与 `POST /relay/apple/:token/clls/wloc`，会把原始 WLOC 请求转发到 Apple 上游，并在 2xx protobuf 响应上执行坐标改写。
+- 中继链路会根据原始请求自动区分 `gs-loc.apple.com` 与 `gs-loc-cn.apple.com`，并把上游返回的状态码与主要响应头透传给代理脚本。
 - 新增了一个基于社区逆向结构的轻量级 protobuf 字节改写器。
 - 客户端脚本现在通过 Worker 中继完成改写，而不是直接原地修改 `$response.body`。
 
