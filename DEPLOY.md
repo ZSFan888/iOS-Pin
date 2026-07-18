@@ -94,3 +94,52 @@ node Scripts/Inspect-capture.mjs Test/Fixtures/sample-01.bin
 ## 持续集成
 
 每次涉及 `Worker/**` 的推送都会触发 `.github/workflows/Worker-ci.yml`，自动运行 Vitest 测试套件和 TypeScript 类型检查。合并改动前请确保这个流程通过。
+
+
+## 通过 Cloudflare 网站控制台部署（不使用命令行）
+
+如果你不想用 Wrangler CLI，也可以完全在浏览器里通过 Cloudflare 官网控制台完成部署。整体分两部分：Worker（后端 API）和 Frontend（前端页面）。
+
+### 一、部署 Worker（后端）
+
+1. 登录 [Cloudflare 控制台](https://dash.cloudflare.com)，在左侧菜单进入 **Workers 和 Pages**。
+2. 点击 **创建应用程序** → 选择 **创建 Worker**。
+3. 给 Worker 起一个名字，例如 `ios-pin`，然后点击 **部署**（此时会先生成一个默认的 "Hello World" 模板）。
+4. 部署完成后，点击进入该 Worker，选择 **编辑代码**（会打开在线代码编辑器 Quick Edit）。
+5. 把仓库中 `Worker/Src/Index.ts` 和 `Worker/Src/Proto/Apple-wloc.ts` 的内容分别粘贴到编辑器中对应的文件里（如果编辑器只支持单文件，需要手动把 `Apple-wloc.ts` 的内容合并到 `Index.ts` 顶部，并删除多余的 `import`/`export` 语句）。
+6. 点击右上角 **保存并部署**。
+
+> 提示：Cloudflare 在线编辑器目前对多文件 TypeScript 项目支持有限，如果遇到编译报错，建议优先使用下面的"连接 GitHub 仓库自动部署"方式，能完整支持这个项目的多文件结构。
+
+### 二、通过连接 GitHub 仓库自动部署（推荐）
+
+这种方式可以让 Cloudflare 直接从你的 GitHub 仓库拉取代码并自动构建，后续每次 `git push` 都会自动触发重新部署。
+
+1. 在 Cloudflare 控制台进入 **Workers 和 Pages** → **创建应用程序**。
+2. 选择 **连接到 Git**，授权 Cloudflare 访问你的 GitHub 账号（`ZSFan888`）。
+3. 选择仓库 `ZSFan888/iOS-Pin`。
+4. 在构建配置中填写：
+   - **根目录**：`Worker`
+   - **构建命令**：`npm install`
+   - **部署命令**：`npx wrangler deploy`
+5. 点击 **保存并部署**，Cloudflare 会自动安装依赖并执行部署。
+6. 部署完成后，在 Worker 的 **设置 → 变量和机密** 页面里添加环境变量：
+   - 如果需要访问控制，添加 **机密变量** `API_KEY` 和/或 `ALLOWED_TOKENS`（类型选择 "机密" 而不是明文变量，避免在控制台被直接查看）。
+7. 在 Worker 的 **设置 → 绑定** 页面里添加 **KV 命名空间绑定**：
+   - 变量名称填 `LOCATIONS`
+   - 选择或新建一个 KV 命名空间（如果还没有，可以在 **存储和数据库 → KV** 页面先创建一个，例如命名为 `ios-pin-locations`）
+
+### 三、部署 Frontend（前端页面）到 Cloudflare Pages
+
+1. 在 Cloudflare 控制台进入 **Workers 和 Pages** → **创建应用程序** → 切换到 **Pages** 标签。
+2. 选择 **连接到 Git**，同样选择仓库 `ZSFan888/iOS-Pin`。
+3. 在构建配置中填写：
+   - **构建命令**：留空（这是纯静态 HTML，不需要构建步骤）
+   - **构建输出目录**：`Frontend/Public`
+4. 点击 **保存并部署**。
+5. 部署完成后，Cloudflare 会给你一个形如 `https://ios-pin.pages.dev` 的地址，访问该地址下的 `Console.html`（即 `https://ios-pin.pages.dev/Console.html`）就能打开控制台页面。
+6. 打开页面后，把第二步部署好的 Worker 地址填入"Worker 地址"字段即可开始使用。
+
+### 四、后续更新方式
+
+采用"连接 GitHub 仓库"的方式后，你不需要再手动操作 Cloudflare 控制台——只要执行 `git push` 把新代码推送到 `main` 分支，Cloudflare 会自动检测改动并重新构建部署 Worker 和 Pages。
