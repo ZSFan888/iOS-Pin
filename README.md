@@ -93,3 +93,19 @@ The protobuf field layout is based on public reverse engineering and may need ad
 - Map clicks now trigger a debounced (500ms) reverse geocode call against Nominatim's `/reverse` endpoint, showing a human-readable place name (neighbourhood/city + region) inside the coordinate badge.
 - Selecting a search result or a saved history item skips the reverse geocode call and reuses the already-known label, avoiding redundant requests.
 - Saving a coordinate now prefers the resolved place name as the history label, falling back to the search input text, then to raw lat/lng if neither is available.
+
+
+## Protobuf verification tooling
+
+- Added `worker/test/apple-wloc.test.ts` (Vitest) covering: field replacement correctness, short-body passthrough, and `decimalToMicro` scaling/rounding.
+- Added `worker/test/fixtures/README.md` explaining how to safely store real capture samples (redacted, no BSSID/PII) for regression testing.
+- Added `worker/scripts/inspect-capture.mjs`, a standalone protobuf field dumper — run `node scripts/inspect-capture.mjs test/fixtures/sample-01.bin` to visually confirm field numbers/wire types in a real Apple WLOC response before trusting the spoofer against it.
+- Added `.github/workflows/worker-ci.yml` to run `npm test` and `tsc --noEmit` on every push/PR touching `worker/**`.
+
+## Next validation step (manual, on your device)
+
+1. Capture a real `gs-loc.apple.com/clls/wloc` response body via Surge/Loon MITM logging.
+2. Save the raw bytes as `worker/test/fixtures/sample-01.bin`.
+3. Run `node scripts/inspect-capture.mjs test/fixtures/sample-01.bin` to inspect the actual field layout.
+4. Compare against the assumptions in `worker/src/proto/apple-wloc.ts` and adjust field numbers/offsets if they differ.
+5. Add a fixture-based test case once the layout is confirmed.
