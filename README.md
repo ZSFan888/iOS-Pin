@@ -40,9 +40,10 @@ iOS 定位系统在 GPS 信号弱或不可用时，会向 `gs-loc.apple.com/clls
 iOS-Pin/
 ├── Frontend/Public/
 │   ├── Console.html        静态前端控制台
-│   └── _worker.js          Pages Functions Advanced Mode 入口（API、中继、模块生成）
+│   ├── _worker.js          Pages Functions Advanced Mode 入口（API、中继、模块生成，零第三方依赖）
+│   └── apple-wloc.js       protobuf 改写逻辑（纯 JS，_worker.js 直接 import）
 ├── Worker/
-│   ├── Src/Proto/          protobuf 改写逻辑（被 _worker.js 引用）
+│   ├── Src/Proto/          protobuf 改写逻辑的 TypeScript 版本（供本地测试/类型检查使用）
 │   ├── Test/                Vitest 测试 + 抓包回归测试
 │   └── Scripts/              protobuf 字段转储调试工具
 ├── Modules-Templates/       各代理客户端模块模板说明
@@ -52,7 +53,7 @@ iOS-Pin/
 └── DEPLOY.md                详细的 Cloudflare Pages 部署步骤
 ```
 
-> `Worker/` 目录里的 protobuf 改写代码和测试保留下来复用，但项目实际运行时不再单独部署一个 Worker——所有请求都由 Cloudflare Pages 站点处理。
+> `Worker/Src/Proto/Apple-wloc.ts` 是同一套 protobuf 改写逻辑的 TypeScript 版本，专门用于本地 Vitest 测试和类型检查；线上实际运行的是 `Frontend/Public/apple-wloc.js` 这个纯 JavaScript 版本，因为 Cloudflare Pages 在"未设置构建命令"模式下直接用 esbuild 处理 `_worker.js`，不会执行 npm install 或做 TypeScript 类型剥离，所以线上代码必须是零依赖的纯 JS，且不能引用 `Frontend/Public` 目录之外的文件。
 
 ## 准备工作
 
