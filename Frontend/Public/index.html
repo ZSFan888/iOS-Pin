@@ -384,10 +384,10 @@ input,select{font:inherit;color:inherit}
     const lat = parseFloat(latEl.value), lng = parseFloat(lngEl.value);
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) { showToast('请先在地图上选点'); return; }
     try {
-      const res = await fetch('https://gs-loc.apple.com/wloc-settings/save?lat=' + lat.toFixed(6) + '&lng=' + lng.toFixed(6), { mode: 'no-cors' });
+      const res = await fetch('https://gs-loc.apple.com/wloc-settings/save?lon=' + lng.toFixed(6) + '&lat=' + lat.toFixed(6), { mode: 'no-cors' });
       showToast('已发送，若代理与 MITM 已开启，设备定位已更新');
     } catch (err) {
-      showToast('发送完成（跨域响应不可读属正常现象），若未生效请检查代理是否开启');
+      showToast('请求已发出；若仍未生效，请重启设备后再打开苹果地图');
     }
   });
 

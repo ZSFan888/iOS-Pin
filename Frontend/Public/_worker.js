@@ -77,7 +77,7 @@ function handleGetScript() {
 function readPersisted() {
   try {
     if (typeof $persistentStore !== 'undefined' && $persistentStore && $persistentStore.read) {
-      const raw = $persistentStore.read('ios-pin-location');
+      const raw = $persistentStore.read('wloc_settings');
       if (raw) return JSON.parse(raw);
     }
   } catch (e) {}
@@ -211,18 +211,18 @@ function parseQuery(urlString) {
   try {
     const requestUrl = (typeof $request !== 'undefined' && $request && $request.url) ? $request.url : '';
     const params = parseQuery(requestUrl);
-    const lat = Number(params.lat);
-    const lng = Number(params.lng);
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) throw new Error('missing lat/lng in request');
-    const payload = JSON.stringify({ latitude: lat, longitude: lng, savedAt: Date.now() });
+    const lat = Number(params.get ? (params.get('lat') || params.get('latitude')) : params.lat);
+    const lon = Number(params.get ? (params.get('lon') || params.get('longitude')) : (params.lon || params.longitude));
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) throw new Error('missing lon/lat in request');
+    const payload = JSON.stringify({ latitude: lat, longitude: lon, accuracy: 25, updatedAt: new Date(Date.now() + 28800000).toISOString().replace('Z', '+08:00') });
     if (typeof $persistentStore !== 'undefined' && $persistentStore && $persistentStore.write) {
-      $persistentStore.write(payload, 'ios-pin-location');
+      $persistentStore.write(payload, 'wloc_settings');
     }
-    log('saved lat=' + lat + ' lng=' + lng);
-    $done({ response: { status: 200, headers: { 'content-type': 'application/json' }, body: '{"ok":true}' } });
+    log('saved lon=' + lon + ' lat=' + lat);
+    $done({ response: { status: 200, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ success: true, longitude: lon, latitude: lat, accuracy: 25 }) } });
   } catch (err) {
     log('failed: ' + (err && err.message ? err.message : err));
-    $done({ response: { status: 400, body: '{"ok":false}' } });
+    $done({ response: { status: 400, body: JSON.stringify({ success: false, error: String(err && err.message ? err.message : err) }) } });
   }
 })();
 `
