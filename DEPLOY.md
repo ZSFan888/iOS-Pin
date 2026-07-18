@@ -24,7 +24,7 @@ npx wrangler login
 ## 4. Create the KV namespace
 
 ```bash
-npx wrangler kv namespace create wloc-pro-locations
+npx wrangler kv namespace create ios-pin-locations
 ```
 
 This prints a namespace `id`. Copy it into `worker/wrangler.jsonc`:
@@ -61,7 +61,7 @@ npm run dev
 ```
 
 Wrangler will print a local URL (typically `http://localhost:8787`). Use this as the
-"Worker 地址" value in `frontend/public/app.html` while testing.
+"Worker 地址" value in `frontend/public/console.html` while testing.
 
 ## 7. Deploy to production
 
@@ -71,11 +71,11 @@ npm run deploy
 npx wrangler deploy --env production
 ```
 
-Wrangler prints your live Worker URL, e.g. `https://wloc-pro.<your-subdomain>.workers.dev`.
+Wrangler prints your live Worker URL, e.g. `https://ios-pin.<your-subdomain>.workers.dev`.
 
 ## 8. Point the frontend at your Worker
 
-Open `frontend/public/app.html` (or host it on Cloudflare Pages) and enter:
+Open `frontend/public/console.html` (or host it on Cloudflare Pages) and enter:
 
 - Worker 地址: your deployed Worker URL
 - 设备 Token: any identifier you choose, e.g. `iphone-main`

@@ -1,5 +1,8 @@
 {
-  "name": "wloc-pro",
+  "name": "ios-pin",
   "private": true,
-  "workspaces": ["worker", "frontend"]
+  "workspaces": [
+    "worker",
+    "frontend"
+  ]
 }

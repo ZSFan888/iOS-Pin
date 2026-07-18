@@ -1,9 +1,9 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "wloc-pro",
+  "name": "ios-pin",
   "main": "src/index.ts",
   "compatibility_date": "2026-07-18",
-  // Create with: wrangler kv namespace create wloc-pro-locations
+  // Create with: wrangler kv namespace create ios-pin-locations
   // Then replace the id below with the returned namespace id.
   "kv_namespaces": [
     {
@@ -14,7 +14,7 @@
   // Optional environment-specific overrides. Deploy with: wrangler deploy --env production
   "env": {
     "production": {
-      "name": "ios-pin",
+      "name": "ios-pin-production",
       "kv_namespaces": [
         {
           "binding": "LOCATIONS",

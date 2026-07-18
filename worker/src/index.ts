@@ -32,7 +32,7 @@ async function requireWriteAuth(c: any, next: () => Promise<void>) {
 }
 
 app.get('/', (c) => c.json({
-  name: 'wloc-pro',
+  name: 'ios-pin',
   status: 'ok',
   endpoints: ['/api/location/:token', '/api/module/:client/:token']
 }))
@@ -98,11 +98,11 @@ app.get('/api/module/:client/:token', async (c) => {
   const { client, token } = c.req.param()
   const workerBase = new URL(c.req.url).origin
   const templates: Record<string, string> = {
-    surge: `[MITM]\nhostname = %APPEND% gs-loc.apple.com, gs-loc-cn.apple.com\n\n[Script]\nwloc-pro = type=http-response,pattern=^https:\\/\\/gs-loc(-cn)?\\.apple\\.com\\/clls\\/wloc,requires-body=1,max-size=0,script-path=${workerBase}/script/${token}.js\n`,
-    loon: `[MITM]\nhostname = gs-loc.apple.com, gs-loc-cn.apple.com\n\n[Script]\nhttp-response ^https:\\/\\/gs-loc(-cn)?\\.apple\\.com\\/clls\\/wloc script-path=${workerBase}/script/${token}.js, requires-body=true, timeout=60, tag=wloc-pro\n`,
+    surge: `[MITM]\nhostname = %APPEND% gs-loc.apple.com, gs-loc-cn.apple.com\n\n[Script]\nios-pin = type=http-response,pattern=^https:\\/\\/gs-loc(-cn)?\\.apple\\.com\\/clls\\/wloc,requires-body=1,max-size=0,script-path=${workerBase}/script/${token}.js\n`,
+    loon: `[MITM]\nhostname = gs-loc.apple.com, gs-loc-cn.apple.com\n\n[Script]\nhttp-response ^https:\\/\\/gs-loc(-cn)?\\.apple\\.com\\/clls\\/wloc script-path=${workerBase}/script/${token}.js, requires-body=true, timeout=60, tag=ios-pin\n`,
     qx: `hostname = gs-loc.apple.com, gs-loc-cn.apple.com\n^https:\\/\\/gs-loc(-cn)?\\.apple\\.com\\/clls\\/wloc url script-response-body ${workerBase}/script/${token}.js\n`,
-    stash: `http:\n  mitm:\n    - gs-loc.apple.com\n    - gs-loc-cn.apple.com\nscript-providers:\n  wloc-pro:\n    url: ${workerBase}/script/${token}.js\n    interval: 86400\nhttp-response:\n  - match: ^https:\\/\\/gs-loc(-cn)?\\.apple\\.com\\/clls\\/wloc\n    name: wloc-pro\n    type: script\n    require-body: true\n    provider: wloc-pro\n`,
-    shadowrocket: `[General]\n\n[MITM]\nhostname = gs-loc.apple.com, gs-loc-cn.apple.com\n\n[Script]\nwloc-pro = type=http-response,pattern=^https:\\/\\/gs-loc(-cn)?\\.apple\\.com\\/clls\\/wloc,requires-body=1,max-size=0,script-path=${workerBase}/script/${token}.js\n`
+    stash: `http:\n  mitm:\n    - gs-loc.apple.com\n    - gs-loc-cn.apple.com\nscript-providers:\n  ios-pin:\n    url: ${workerBase}/script/${token}.js\n    interval: 86400\nhttp-response:\n  - match: ^https:\\/\\/gs-loc(-cn)?\\.apple\\.com\\/clls\\/wloc\n    name: ios-pin\n    type: script\n    require-body: true\n    provider: ios-pin\n`,
+    shadowrocket: `[General]\n\n[MITM]\nhostname = gs-loc.apple.com, gs-loc-cn.apple.com\n\n[Script]\nios-pin = type=http-response,pattern=^https:\\/\\/gs-loc(-cn)?\\.apple\\.com\\/clls\\/wloc,requires-body=1,max-size=0,script-path=${workerBase}/script/${token}.js\n`
   }
   const content = templates[client]
   if (!content) return c.text('unsupported client', 404)

@@ -1,4 +1,4 @@
-# WLOC Pro
+# iOS Pin
 
 A cleaner, extensible reimplementation inspired by Apple WLOC response spoofing workflows.
 
@@ -28,7 +28,7 @@ npm run dev
 
 ### Frontend
 
-Open `frontend/public/app.html` directly for static preview, or serve it with any static server.
+Open `frontend/public/console.html` directly for static preview, or serve it with any static server.
 
 ## Deployment notes
 
@@ -42,7 +42,7 @@ Open `frontend/public/app.html` directly for static preview, or serve it with an
 ```bash
 git init
 git add .
-git commit -m "feat: init wloc-pro scaffold"
+git commit -m "feat: init ios-pin scaffold"
 git branch -M main
 git remote add origin https://<YOUR_PAT>@github.com/<YOUR_USERNAME>/<YOUR_REPO>.git
 git push -u origin main
@@ -64,7 +64,7 @@ The protobuf field layout is based on public reverse engineering and may need ad
 
 ## Frontend progress
 
-- Added a dark/light console UI (`frontend/public/app.html`) using Leaflet for map-based coordinate picking.
+- Added a dark/light console UI (`frontend/public/console.html`) using Leaflet for map-based coordinate picking.
 - Added debounced location search backed by OpenStreetMap Nominatim, with keyboard navigation (arrow keys + enter) and result list.
 - Added coordinate save flow calling `/api/location/:token`, module URL generation per client, copy/open actions, and an in-memory recent-location history list.
 

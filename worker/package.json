@@ -1,5 +1,5 @@
 {
-  "name": "wloc-pro-worker",
+  "name": "ios-pin-worker",
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
