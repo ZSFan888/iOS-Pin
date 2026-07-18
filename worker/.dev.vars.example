@@ -1,0 +1,10 @@
+# Copy this file to .dev.vars for local `wrangler dev` runs.
+# These are NOT used in production — production secrets are set via `wrangler secret put`.
+
+# Optional: restrict which tokens are allowed to save/read locations (comma separated).
+# Leave empty to allow any token during local development.
+ALLOWED_TOKENS=
+
+# Optional: shared secret required in the `x-wloc-key` header for write endpoints.
+# Leave empty to disable auth during local development.
+API_KEY=

@@ -109,3 +109,15 @@ The protobuf field layout is based on public reverse engineering and may need ad
 3. Run `node scripts/inspect-capture.mjs test/fixtures/sample-01.bin` to inspect the actual field layout.
 4. Compare against the assumptions in `worker/src/proto/apple-wloc.ts` and adjust field numbers/offsets if they differ.
 5. Add a fixture-based test case once the layout is confirmed.
+
+
+## Access control (new)
+
+- Worker now supports two optional protections via environment secrets: `API_KEY` (shared secret required in the `x-wloc-key` header for all write endpoints) and `ALLOWED_TOKENS` (comma-separated allowlist restricting which device tokens can be used at all).
+- Both are opt-in — if unset, the Worker behaves as before (open write access), which is fine for personal/local use but not recommended for a publicly shared Worker URL.
+- Frontend now has an "API Key" field; when filled, it's sent as `x-wloc-key` on save/delete requests.
+- See `DEPLOY.md` for the full setup walkthrough, including `wrangler secret put` usage and `.dev.vars` for local development.
+
+## Full deployment walkthrough
+
+See [`DEPLOY.md`](./DEPLOY.md) for step-by-step Wrangler KV setup, secrets configuration, local dev, and production deploy instructions.

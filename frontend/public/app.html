@@ -207,6 +207,10 @@ input,select{font:inherit;color:inherit}
         <label for="token">设备 Token</label>
         <input id="token" type="text" placeholder="例如 iphone-main" autocomplete="off" />
       </div>
+      <div class="field">
+        <label for="apiKey">API Key（可选，若 Worker 设置了 API_KEY）</label>
+        <input id="apiKey" type="password" placeholder="留空表示未启用鉴权" autocomplete="off" />
+      </div>
     </div>
 
     <div class="panel-section">
@@ -469,7 +473,9 @@ input,select{font:inherit;color:inherit}
       const b = currentBase(), t = currentToken();
       if (!b || !t) return;
       try {
-        const res = await fetch(b + '/api/history/' + t + '/' + idx, { method: 'DELETE' });
+        const apiKey = document.getElementById('apiKey').value.trim();
+        const delHeaders = apiKey ? { 'x-wloc-key': apiKey } : {};
+        const res = await fetch(b + '/api/history/' + t + '/' + idx, { method: 'DELETE', headers: delHeaders });
         const data = await res.json();
         history = Array.isArray(data.items) ? data.items : history;
         renderHistory();
@@ -489,15 +495,17 @@ input,select{font:inherit;color:inherit}
       return;
     }
     try {
+      const apiKey = document.getElementById('apiKey').value.trim();
+      const authHeaders = apiKey ? { 'content-type': 'application/json', 'x-wloc-key': apiKey } : { 'content-type': 'application/json' };
       await fetch(b + '/api/location/' + t, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: authHeaders,
         body: JSON.stringify({ lat, lng })
       });
       const label = lastReverseLabel || (searchInput && searchInput.value.trim() ? searchInput.value.trim() : (lat.toFixed(4) + ', ' + lng.toFixed(4)));
       const res = await fetch(b + '/api/history/' + t, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: authHeaders,
         body: JSON.stringify({ label, lat, lng })
       });
       const data = await res.json();

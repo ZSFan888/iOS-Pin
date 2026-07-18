@@ -3,9 +3,33 @@ import { decimalToMicro, spoofAppleWlocResponse } from './proto/apple-wloc'
 
 type Bindings = {
   LOCATIONS: KVNamespace
+  API_KEY?: string
+  ALLOWED_TOKENS?: string
 }
 
 const app = new Hono<{ Bindings: Bindings }>()
+
+function isTokenAllowed(env: Bindings, token: string) {
+  if (!env.ALLOWED_TOKENS) return true
+  const allowed = env.ALLOWED_TOKENS.split(',').map(t => t.trim()).filter(Boolean)
+  if (allowed.length === 0) return true
+  return allowed.includes(token)
+}
+
+async function requireWriteAuth(c: any, next: () => Promise<void>) {
+  const env = c.env as Bindings
+  const token = c.req.param('token')
+  if (token && !isTokenAllowed(env, token)) {
+    return c.json({ error: 'token not allowed' }, 403)
+  }
+  if (env.API_KEY) {
+    const provided = c.req.header('x-wloc-key')
+    if (provided !== env.API_KEY) {
+      return c.json({ error: 'unauthorized' }, 401)
+    }
+  }
+  await next()
+}
 
 app.get('/', (c) => c.json({
   name: 'wloc-pro',
@@ -20,7 +44,7 @@ app.get('/api/location/:token', async (c) => {
   return c.json(raw)
 })
 
-app.post('/api/location/:token', async (c) => {
+app.post('/api/location/:token', requireWriteAuth, async (c) => {
   const token = c.req.param('token')
   const body = await c.req.json<{ lat: number; lng: number }>()
   if (!Number.isFinite(body.lat) || !Number.isFinite(body.lng)) {
@@ -39,7 +63,7 @@ app.get('/api/history/:token', async (c) => {
   return c.json({ items: raw ?? [] })
 })
 
-app.post('/api/history/:token', async (c) => {
+app.post('/api/history/:token', requireWriteAuth, async (c) => {
   const token = c.req.param('token')
   const body = await c.req.json<{ label?: string; lat: number; lng: number }>()
   if (!Number.isFinite(body.lat) || !Number.isFinite(body.lng)) {
@@ -59,7 +83,7 @@ app.post('/api/history/:token', async (c) => {
   return c.json({ ok: true, items: next })
 })
 
-app.delete('/api/history/:token/:index', async (c) => {
+app.delete('/api/history/:token/:index', requireWriteAuth, async (c) => {
   const token = c.req.param('token')
   const index = Number(c.req.param('index'))
   const raw = await c.env.LOCATIONS.get(`history:${token}`, 'json') as HistoryEntry[] | null
