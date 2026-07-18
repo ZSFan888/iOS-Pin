@@ -190,26 +190,9 @@ input,select{font:inherit;color:inherit}
 
   <aside class="panel" aria-label="配置面板">
     <div class="panel-section">
-      <div class="section-title">设备管理</div>
-      <div id="deviceList" class="device-list"></div>
-      <button class="btn btn-ghost" id="addDevice">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-        添加新设备
-      </button>
-    </div>
-    <div class="panel-section">
-      <div class="section-title">站点连接</div>
+      <div class="section-title">使用方式</div>
       <div class="field">
-        <label for="base">站点地址（生成模块用）</label>
-        <input id="base" type="url" placeholder="https://your-project.workers.dev" autocomplete="off" />
-      </div>
-      <div class="field">
-        <label for="token">设备 Token</label>
-        <input id="token" type="text" placeholder="例如 iphone-main" autocomplete="off" />
-      </div>
-      <div class="field">
-        <label for="apiKey">API Key（可选，若 Worker 设置了 API_KEY）</label>
-        <input id="apiKey" type="password" placeholder="留空表示未启用鉴权" autocomplete="off" />
+        <p class="field-note">在地图上点选或搜索一个位置，切换下方的代理工具标签，点击生成即可获得模块链接，无需 Token 或 API Key。</p>
       </div>
     </div>
 
@@ -225,24 +208,21 @@ input,select{font:inherit;color:inherit}
           <input id="lng" type="text" placeholder="139.650300" inputmode="decimal" />
         </div>
       </div>
-      <button class="btn btn-primary" id="save">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg>
-        保存当前位置
-      </button>
+
     </div>
 
     <div class="panel-section">
       <div class="section-title">生成代理模块</div>
       <div class="tabs" role="tablist" aria-label="选择代理客户端">
-        <button class="tab" role="tab" aria-selected="true" data-client="surge">Surge</button>
+        <button class="tab" role="tab" aria-selected="true" data-client="shadowrocket">小火箭</button>
+        <button class="tab" role="tab" aria-selected="false" data-client="surge">Surge</button>
         <button class="tab" role="tab" aria-selected="false" data-client="loon">Loon</button>
         <button class="tab" role="tab" aria-selected="false" data-client="qx">Quantumult X</button>
         <button class="tab" role="tab" aria-selected="false" data-client="stash">Stash</button>
-        <button class="tab" role="tab" aria-selected="false" data-client="shadowrocket">小火箭</button>
       </div>
       <button class="btn btn-ghost" id="genModule">生成模块链接</button>
       <div class="module-out">
-        <code id="moduleUrl">尚未生成，先保存坐标再生成模块链接</code>
+        <code id="moduleUrl">尚未生成，先在地图上选点再生成模块链接</code>
         <div class="row-2">
           <button class="copy-btn" id="copyUrl">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
@@ -360,196 +340,30 @@ input,select{font:inherit;color:inherit}
   }
 
 
-  let devices = [];
-  let activeDeviceIdx = -1;
-  const deviceListEl = document.getElementById('deviceList');
-
-  function renderDevices(){
-    if (devices.length === 0) {
-      deviceListEl.innerHTML = '<div class="device-empty">还没有设备，先填写 站点地址（生成模块用）与 Token 后点击“添加新设备”</div>';
-      return;
-    }
-    deviceListEl.innerHTML = devices.map((d, idx) => (
-      '<div class="device-item' + (idx === activeDeviceIdx ? ' active' : '') + '" data-idx="' + idx + '">' +
-        '<span class="name">' + d.token + '</span><span class="badge">' + d.base.replace(/^https?:\/\//,'') + '</span>' +
-      '</div>'
-    )).join('');
-  }
-  renderDevices();
-
-  function selectDevice(idx){
-    const d = devices[idx];
-    if (!d) return;
-    activeDeviceIdx = idx;
-    baseEl.value = d.base;
-    tokenEl.value = d.token;
-    renderDevices();
-    loadHistory();
-  }
-
-  deviceListEl.addEventListener('click', (e) => {
-    const item = e.target.closest('.device-item');
-    if (!item) return;
-    selectDevice(Number(item.dataset.idx));
-  });
-
-  document.getElementById('addDevice').addEventListener('click', () => {
-    const b = currentBase(), t = currentToken();
-    if (!b || !t) { showToast('请先填写 站点地址（生成模块用）和 Token'); return; }
-    const exists = devices.findIndex(d => d.base === b && d.token === t);
-    if (exists >= 0) {
-      activeDeviceIdx = exists;
-      showToast('该设备已存在');
-    } else {
-      devices.unshift({ base: b, token: t });
-      activeDeviceIdx = 0;
-      showToast('已添加设备 ' + t);
-    }
-    renderDevices();
-  });
-
-  let history = [];
-  const historyList = document.getElementById('historyList');
-  const baseEl = document.getElementById('base');
-  const tokenEl = document.getElementById('token');
-
-  // If the console is served from the same Worker (single-deploy setup),
-  // default the Worker address field to the current origin so the user
-  // doesn't have to manually copy/paste it.
-  if (!baseEl.value.trim() && window.location.origin.startsWith('http')) {
-    baseEl.value = window.location.origin;
-  }
-
-  function currentBase(){ return baseEl.value.trim().replace(/\/$/, ''); }
-  function currentToken(){ return tokenEl.value.trim(); }
-
   function renderHistory(){
-    if (history.length === 0) {
-      historyList.innerHTML = '<div class="empty-state">' +
-        '<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M12 2C7.6 2 4 5.4 4 9.6 4 15 12 22 12 22s8-7 8-12.4C20 5.4 16.4 2 12 2z"/><circle cx="12" cy="9.6" r="2.6"/></svg>' +
-        '<p>先在地图上选点并保存，然后回到 Shadowrocket 更新模块即可生效</p></div>';
-      return;
-    }
-    historyList.innerHTML = history.map((h, idx) => (
-      '<div class="history-item">' +
-        '<div class="meta"><span class="name">' + h.label + '</span><span class="coord">' + h.lat.toFixed(4) + ', ' + h.lng.toFixed(4) + '</span></div>' +
-        '<div class="actions">' +
-          '<button class="go" data-idx="' + idx + '" aria-label="定位到该坐标"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg></button>' +
-          '<button class="del" data-idx="' + idx + '" aria-label="删除该收藏"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6"/></svg></button>' +
-        '</div>' +
-      '</div>'
-    )).join('');
+    historyList.innerHTML = '<div class="empty-state">' +
+      '<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M12 2C7.6 2 4 5.4 4 9.6 4 15 12 22 12 22s8-7 8-12.4C20 5.4 16.4 2 12 2z"/><circle cx="12" cy="9.6" r="2.6"/></svg>' +
+      '<p>在地图上选点后，切换上方的代理工具标签并点击“生成模块链接”，无需 Token</p></div>';
   }
-
-  async function loadHistory(){
-    const b = currentBase(), t = currentToken();
-    if (!b || !t) { history = []; renderHistory(); return; }
-    historyList.innerHTML = '<div class="history-loading">加载历史收藏…</div>';
-    try {
-      const res = await fetch(b + '/api/history/' + t);
-      const data = await res.json();
-      history = Array.isArray(data.items) ? data.items : [];
-    } catch (err) {
-      history = [];
-    }
-    renderHistory();
-  }
+  const historyList = document.getElementById('historyList');
   renderHistory();
 
-  let historyDebounce = null;
-  [baseEl, tokenEl].forEach(el => el.addEventListener('input', () => {
-    if (historyDebounce) clearTimeout(historyDebounce);
-    historyDebounce = setTimeout(loadHistory, 500);
-  }));
-
-  historyList.addEventListener('click', async (e) => {
-    const goBtn = e.target.closest('.go');
-    const delBtn = e.target.closest('.del');
-    if (goBtn) {
-      const h = history[Number(goBtn.dataset.idx)];
-      if (h) {
-        setCoord(h.lat, h.lng, true, true);
-        lastReverseLabel = h.label;
-        placeNameEl.textContent = h.label;
-        placeNameEl.classList.remove('loading');
-      }
-      return;
-    }
-    if (delBtn) {
-      const idx = Number(delBtn.dataset.idx);
-      const b = currentBase(), t = currentToken();
-      if (!b || !t) return;
-      try {
-        const apiKey = document.getElementById('apiKey').value.trim();
-        const delHeaders = apiKey ? { 'x-wloc-key': apiKey } : {};
-        const res = await fetch(b + '/api/history/' + t + '/' + idx, { method: 'DELETE', headers: delHeaders });
-        const data = await res.json();
-        history = Array.isArray(data.items) ? data.items : history;
-        renderHistory();
-        showToast('已删除该收藏');
-      } catch (err) {
-        showToast('删除失败');
-      }
-    }
-  });
-
-  document.getElementById('save').addEventListener('click', async () => {
-    const b = currentBase();
-    const t = currentToken();
-    const lat = parseFloat(latEl.value), lng = parseFloat(lngEl.value);
-    if (!b || !t || !Number.isFinite(lat) || !Number.isFinite(lng)) {
-      showToast('请填写 站点地址（生成模块用）、Token 和坐标');
-      return;
-    }
-    try {
-      const apiKey = document.getElementById('apiKey').value.trim();
-      const authHeaders = apiKey ? { 'content-type': 'application/json', 'x-wloc-key': apiKey } : { 'content-type': 'application/json' };
-      const locRes = await fetch(b + '/api/location/' + t, {
-        method: 'POST',
-        headers: authHeaders,
-        body: JSON.stringify({ lat, lng })
-      });
-      if (!locRes.ok) {
-        let msg = '保存失败（HTTP ' + locRes.status + '）';
-        try { const errData = await locRes.json(); if (errData && errData.error) msg = errData.error; } catch (e) {}
-        showToast(msg);
-        return;
-      }
-      const label = lastReverseLabel || (searchInput && searchInput.value.trim() ? searchInput.value.trim() : (lat.toFixed(4) + ', ' + lng.toFixed(4)));
-      const res = await fetch(b + '/api/history/' + t, {
-        method: 'POST',
-        headers: authHeaders,
-        body: JSON.stringify({ label, lat, lng })
-      });
-      if (!res.ok) {
-        let msg = '保存失败（HTTP ' + res.status + '）';
-        try { const errData = await res.json(); if (errData && errData.error) msg = errData.error; } catch (e) {}
-        showToast(msg);
-        return;
-      }
-      const data = await res.json();
-      history = Array.isArray(data.items) ? data.items : history;
-      renderHistory();
-      showToast('位置已保存到 ' + t);
-    } catch (err) {
-      showToast('保存失败：网络错误或跨域被拦截，请检查站点地址（生成模块用）是否正确（' + (err && err.message ? err.message : err) + '）');
-    }
-  });
-
-  let activeClient = 'surge';
+  let activeClient = 'shadowrocket';
   document.querySelectorAll('.tab').forEach(tab => tab.addEventListener('click', () => {
     document.querySelectorAll('.tab').forEach(t2 => t2.setAttribute('aria-selected', 'false'));
     tab.setAttribute('aria-selected', 'true');
     activeClient = tab.dataset.client;
+    generateModuleUrl();
   }));
 
   const moduleUrlEl = document.getElementById('moduleUrl');
-  document.getElementById('genModule').addEventListener('click', () => {
-    const base = document.getElementById('base').value.trim().replace(/\/$/, '');
-    const token = document.getElementById('token').value.trim();
-    if (!base || !token) { showToast('请先填写 站点地址（生成模块用）和 Token'); return; }
-    moduleUrlEl.textContent = base + '/api/module/' + activeClient + '/' + token;
-  });
+  function generateModuleUrl(){
+    const lat = parseFloat(latEl.value), lng = parseFloat(lngEl.value);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) { showToast('请先在地图上选点'); return; }
+    const base = window.location.origin;
+    moduleUrlEl.textContent = base + '/api/module/' + activeClient + '?lat=' + lat.toFixed(6) + '&lng=' + lng.toFixed(6);
+  }
+  document.getElementById('genModule').addEventListener('click', generateModuleUrl);
   document.getElementById('copyUrl').addEventListener('click', async () => {
     const text = moduleUrlEl.textContent;
     if (!text || text.startsWith('尚未生成')) { showToast('请先生成模块链接'); return; }
