@@ -1,6 +1,6 @@
-# Module templates
+# 模块模板
 
-This folder documents the dynamic templates emitted by the Worker for each client.
+这个目录记录了 Worker 为各个客户端动态生成的模板内容说明。
 
 - surge
 - loon
