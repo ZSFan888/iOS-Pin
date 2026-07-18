@@ -102,6 +102,20 @@ node Scripts/Inspect-capture.mjs Test/Fixtures/sample-01.bin
 每次涉及 `Worker/**` 的推送都会触发 `.github/workflows/Worker-ci.yml`，自动运行 Vitest 测试套件和 TypeScript 类型检查。合并改动前请确保这个流程通过。
 
 
+## 方式三：通过 GitHub Actions 自动部署（推送即上线）
+
+除了本地手动执行 `wrangler deploy`，仓库里的 `.github/workflows/Worker-ci.yml` 现在已经内置了**部署任务**：每次推送到 `main` 分支，测试通过后会自动执行 `npx wrangler deploy` 把 Worker 部署到 Cloudflare。
+
+要让这个自动部署生效，需要在 GitHub 仓库里配置一个密钥：
+
+1. 生成一个 Cloudflare API Token：登录 [Cloudflare 控制台](https://dash.cloudflare.com) → 右上角头像 → **My Profile** → **API Tokens** → **Create Token**，选择 **Edit Cloudflare Workers** 模板（或自定义权限：Account → Workers Scripts 编辑、Workers KV Storage 编辑）。
+2. 复制生成的 Token。
+3. 打开你的 GitHub 仓库页面 → **Settings** → **Secrets and variables** → **Actions** → **New repository secret**。
+4. **Name** 填 `CLOUDFLARE_API_TOKEN`，**Value** 粘贴刚生成的 Token，保存。
+5. 之后每次 `git push` 到 `main` 分支，GitHub Actions 会自动跑测试，测试通过后自动部署，无需再手动执行 `wrangler deploy`。
+
+> 这个方式和"方式二：连接 GitHub 仓库自动部署"（Cloudflare Workers Builds）是两条独立的自动部署路径，二选一即可，不要同时启用，否则同一次推送会触发两次部署。
+
 ## 通过 Cloudflare 网站控制台部署（不使用命令行）
 
 如果你不想用 Wrangler CLI，也可以完全在浏览器里通过 Cloudflare 官网控制台完成部署。由于前端资源已经打包进 Worker 部署（见第 7 步），这里只需要部署一次 Worker，不需要再单独部署 Cloudflare Pages。
