@@ -58,37 +58,21 @@ iOS-Pin/
 - 一台已安装以下任一代理客户端的 iOS 设备：Surge、Loon、Quantumult X、Stash 或 Shadowrocket，并已启用该客户端的 **MITM 功能**（需要先在设备上安装客户端提供的根证书）
 - 本地电脑安装 **Node.js 20+**（仅部署时需要，日常使用不需要）
 
-## 第一步：部署 Worker
+## 第一步：部署 Pages
 
-### 方式 A：命令行部署（推荐，熟悉终端的用户）
+推荐只保留 **Cloudflare Pages + GitHub 自动部署** 这一种方式。Pages 会托管 `Frontend/Public` 里的静态前端，同时通过 `Frontend/Public/_worker.js` 运行后端逻辑，所以前后端依然共用同一个 Pages 域名 [web:258][web:265]。
 
-```bash
-git clone https://github.com/<你的用户名>/<你的仓库>.git
-cd <你的仓库>/Worker
-npm install
-npx wrangler login
-npx wrangler kv namespace create ios-pin-locations
-```
+具体操作：
 
-把上一条命令返回的 `id` 填入 `Worker/wrangler.jsonc` 的 `kv_namespaces` 里：
+1. 在 Cloudflare 控制台进入 **Workers & Pages**，创建一个 **Pages** 项目并连接你的 GitHub 仓库 [web:265]。
+2. 构建设置填写：
+   - **Build command**：留空
+   - **Build output directory**：`Frontend/Public`
+3. 首次创建完成后，在项目的 **Settings → Functions** 或 **Bindings** 里绑定 KV 命名空间 `LOCATIONS`；Pages Functions 可以直接使用 KV 绑定处理动态接口 [web:254][web:255]。
+4. 把你创建的 KV 命名空间绑定名设为 `LOCATIONS`，这样 `_worker.js` 中的 API 才能正常读写坐标。
+5. 如果需要访问控制，再在 Pages 项目的环境变量/机密里配置 `API_KEY` 和 `ALLOWED_TOKENS`。
 
-```jsonc
-"kv_namespaces": [
-  { "binding": "LOCATIONS", "id": "<粘贴你的 id>" }
-]
-```
-
-然后执行一次部署，**前端和后端会一起发布**，不需要分两次操作：
-
-```bash
-npm run deploy
-```
-
-命令执行完，终端会打印出一个形如 `https://ios-pin.<你的子域名>.workers.dev` 的地址——这个地址同时是你的前端控制台地址和后端 API 地址，记下它。
-
-### 方式 B：纯网页操作（不使用命令行）
-
-如果你不想装 Node.js 或用终端，可以完全在浏览器里通过 Cloudflare 控制台完成部署，详细图文步骤见 [`DEPLOY.md`](./DEPLOY.md) 中的"通过 Cloudflare 网站控制台部署"章节。推荐使用"连接 GitHub 仓库自动部署"的方式，这样以后你每次 `git push` 都会自动重新部署。
+部署完成后，Pages 会给你一个 `*.pages.dev` 地址，这个地址同时承担前端页面和 `/api/*`、`/relay/*`、`/script/*` 后端接口，因为 Pages Advanced Mode 下 `_worker.js` 会接管动态请求并把静态资源回退给 `env.ASSETS.fetch()` [web:258]。
 
 ## 第二步：打开控制台并保存坐标
 
