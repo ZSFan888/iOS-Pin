@@ -3,15 +3,41 @@ export type Coord = {
   lngMicro: bigint
 }
 
+const UINT64_MASK = (1n << 64n) - 1n
+
+/**
+ * Encodes a signed 64-bit integer as a protobuf varint using standard two's
+ * complement wrapping (this is what proto3 `int64`/`int32` fields use on the
+ * wire — NOT zigzag encoding, which is reserved for `sint32`/`sint64`).
+ *
+ * IMPORTANT: Apple's actual wire type for lat/lng fields has not been
+ * confirmed against a real capture yet (see Worker/Test/Fixtures/README.md).
+ * If real captures show zigzag encoding instead, swap this out for
+ * `encodeZigzagVarint` below. Both are provided so switching is a one-line change.
+ */
 function encodeVarint(value: bigint): number[] {
   const out: number[] = []
-  let v = value
-  while (v >= 0x80n) {
+  let v = value < 0n ? (value & UINT64_MASK) : value
+  while (v > 0x7fn) {
     out.push(Number((v & 0x7fn) | 0x80n))
     v >>= 7n
   }
   out.push(Number(v))
   return out
+}
+
+/** Zigzag-encodes a signed value, then varint-encodes it (for `sint32`/`sint64` fields). */
+function encodeZigzagVarint(value: bigint): number[] {
+  const zigzag = value >= 0n ? value << 1n : (-value << 1n) - 1n
+  return encodeVarint(zigzag)
+}
+
+/** Decodes a zigzag-encoded varint back to its signed value. */
+function decodeZigzagVarint(bytes: Uint8Array, offset: number) {
+  const raw = decodeVarint(bytes, offset)
+  const value = raw.value
+  const signed = (value & 1n) === 0n ? value >> 1n : -((value + 1n) >> 1n)
+  return { value: signed, next: raw.next }
 }
 
 function decodeVarint(bytes: Uint8Array, offset: number) {
@@ -26,6 +52,17 @@ function decodeVarint(bytes: Uint8Array, offset: number) {
     shift += 7n
   }
   throw new Error('unterminated varint')
+}
+
+/**
+ * Reinterprets a raw varint-decoded value as a signed 64-bit two's complement
+ * integer. Plain `decodeVarint` returns an always-positive bigint (since it
+ * just accumulates bits); this converts values with the top bit set back to
+ * their negative representation.
+ */
+function toSigned64(value: bigint): bigint {
+  const masked = value & UINT64_MASK
+  return masked >= 1n << 63n ? masked - (1n << 64n) : masked
 }
 
 function skipField(bytes: Uint8Array, offset: number, wireType: number) {
@@ -116,3 +153,9 @@ export function spoofAppleWlocResponse(body: Uint8Array, coord: Coord) {
 export function decimalToMicro(value: number) {
   return BigInt(Math.round(value * 100000000))
 }
+
+export function microToDecimal(value: bigint) {
+  return Number(value) / 100000000
+}
+
+export { encodeVarint, decodeVarint, encodeZigzagVarint, decodeZigzagVarint, toSigned64 }
