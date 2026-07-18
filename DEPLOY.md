@@ -9,7 +9,7 @@
 
 ## 2. 项目结构说明
 
-- `Frontend/Public/Console.html`：前端地图控制台页面
+- `Frontend/Public/index.html`：前端地图控制台页面
 - `Frontend/Public/_worker.js`：Pages Functions Advanced Mode 入口，包含坐标存取 API、Apple WLOC 中继逻辑、代理模块生成逻辑。这个文件是**零第三方依赖的纯 JavaScript**，因为 Cloudflare Pages 在未设置 Build command 时不会执行 `npm install`，也不会做 TypeScript 类型剥离
 - `Frontend/Public/apple-wloc.js`：protobuf 坐标改写逻辑的纯 JS 版本，被 `_worker.js` 用相对路径 `import` 引用（必须放在 `Frontend/Public` 目录内，Pages 不会打包目录外的文件）
 - `Worker/Src/Proto/Apple-wloc.ts`：同一套逻辑的 TypeScript 版本，只用于本地 Vitest 测试和类型检查，不参与线上部署

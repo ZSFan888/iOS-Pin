@@ -39,7 +39,7 @@ iOS 定位系统在 GPS 信号弱或不可用时，会向 `gs-loc.apple.com/clls
 ```
 iOS-Pin/
 ├── Frontend/Public/
-│   ├── Console.html        静态前端控制台
+│   ├── index.html        静态前端控制台
 │   ├── _worker.js          Pages Functions Advanced Mode 入口（API、中继、模块生成，零第三方依赖）
 │   └── apple-wloc.js       protobuf 改写逻辑（纯 JS，_worker.js 直接 import）
 ├── Worker/
@@ -160,7 +160,7 @@ npm run dev
 
 ### 单独预览前端样式
 
-如果只想调整界面样式，不连接真实后端，可以直接打开 `Frontend/Public/Console.html`，或用任意静态服务器托管，再手动填入其他环境的站点地址测试。
+如果只想调整界面样式，不连接真实后端，可以直接打开 `Frontend/Public/index.html`，或用任意静态服务器托管，再手动填入其他环境的站点地址测试。
 
 ### 运行 protobuf 相关测试
 
