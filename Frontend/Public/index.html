@@ -200,7 +200,7 @@ input,select{font:inherit;color:inherit}
     <div class="panel-section">
       <div class="section-title">站点连接</div>
       <div class="field">
-        <label for="base">站点地址</label>
+        <label for="base">站点地址（生成模块用）</label>
         <input id="base" type="url" placeholder="https://your-project.workers.dev" autocomplete="off" />
       </div>
       <div class="field">
@@ -227,7 +227,7 @@ input,select{font:inherit;color:inherit}
       </div>
       <button class="btn btn-primary" id="save">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg>
-        保存坐标到站点
+        保存当前位置
       </button>
     </div>
 
@@ -240,9 +240,9 @@ input,select{font:inherit;color:inherit}
         <button class="tab" role="tab" aria-selected="false" data-client="stash">Stash</button>
         <button class="tab" role="tab" aria-selected="false" data-client="shadowrocket">小火箭</button>
       </div>
-      <button class="btn btn-ghost" id="genModule">生成模块地址</button>
+      <button class="btn btn-ghost" id="genModule">生成模块链接</button>
       <div class="module-out">
-        <code id="moduleUrl">尚未生成，先保存坐标再生成模块地址</code>
+        <code id="moduleUrl">尚未生成，先保存坐标再生成模块链接</code>
         <div class="row-2">
           <button class="copy-btn" id="copyUrl">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
@@ -366,7 +366,7 @@ input,select{font:inherit;color:inherit}
 
   function renderDevices(){
     if (devices.length === 0) {
-      deviceListEl.innerHTML = '<div class="device-empty">还没有设备，先填写 站点地址与 Token 后点击“添加新设备”</div>';
+      deviceListEl.innerHTML = '<div class="device-empty">还没有设备，先填写 站点地址（生成模块用）与 Token 后点击“添加新设备”</div>';
       return;
     }
     deviceListEl.innerHTML = devices.map((d, idx) => (
@@ -395,7 +395,7 @@ input,select{font:inherit;color:inherit}
 
   document.getElementById('addDevice').addEventListener('click', () => {
     const b = currentBase(), t = currentToken();
-    if (!b || !t) { showToast('请先填写 站点地址和 Token'); return; }
+    if (!b || !t) { showToast('请先填写 站点地址（生成模块用）和 Token'); return; }
     const exists = devices.findIndex(d => d.base === b && d.token === t);
     if (exists >= 0) {
       activeDeviceIdx = exists;
@@ -427,7 +427,7 @@ input,select{font:inherit;color:inherit}
     if (history.length === 0) {
       historyList.innerHTML = '<div class="empty-state">' +
         '<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M12 2C7.6 2 4 5.4 4 9.6 4 15 12 22 12 22s8-7 8-12.4C20 5.4 16.4 2 12 2z"/><circle cx="12" cy="9.6" r="2.6"/></svg>' +
-        '<p>还没有保存过的坐标，选点并保存后会出现在这里</p></div>';
+        '<p>先在地图上选点并保存，然后回到 Shadowrocket 更新模块即可生效</p></div>';
       return;
     }
     historyList.innerHTML = history.map((h, idx) => (
@@ -498,7 +498,7 @@ input,select{font:inherit;color:inherit}
     const t = currentToken();
     const lat = parseFloat(latEl.value), lng = parseFloat(lngEl.value);
     if (!b || !t || !Number.isFinite(lat) || !Number.isFinite(lng)) {
-      showToast('请填写 站点地址、Token 和坐标');
+      showToast('请填写 站点地址（生成模块用）、Token 和坐标');
       return;
     }
     try {
@@ -530,9 +530,9 @@ input,select{font:inherit;color:inherit}
       const data = await res.json();
       history = Array.isArray(data.items) ? data.items : history;
       renderHistory();
-      showToast('坐标已保存到 ' + t);
+      showToast('位置已保存到 ' + t);
     } catch (err) {
-      showToast('保存失败：网络错误或跨域被拦截，请检查站点地址是否正确（' + (err && err.message ? err.message : err) + '）');
+      showToast('保存失败：网络错误或跨域被拦截，请检查站点地址（生成模块用）是否正确（' + (err && err.message ? err.message : err) + '）');
     }
   });
 
@@ -547,17 +547,17 @@ input,select{font:inherit;color:inherit}
   document.getElementById('genModule').addEventListener('click', () => {
     const base = document.getElementById('base').value.trim().replace(/\/$/, '');
     const token = document.getElementById('token').value.trim();
-    if (!base || !token) { showToast('请先填写 站点地址和 Token'); return; }
+    if (!base || !token) { showToast('请先填写 站点地址（生成模块用）和 Token'); return; }
     moduleUrlEl.textContent = base + '/api/module/' + activeClient + '/' + token;
   });
   document.getElementById('copyUrl').addEventListener('click', async () => {
     const text = moduleUrlEl.textContent;
-    if (!text || text.startsWith('尚未生成')) { showToast('请先生成模块地址'); return; }
+    if (!text || text.startsWith('尚未生成')) { showToast('请先生成模块链接'); return; }
     try { await navigator.clipboard.writeText(text); showToast('已复制模块地址'); } catch (e) { showToast('复制失败'); }
   });
   document.getElementById('openUrl').addEventListener('click', () => {
     const text = moduleUrlEl.textContent;
-    if (!text || text.startsWith('尚未生成')) { showToast('请先生成模块地址'); return; }
+    if (!text || text.startsWith('尚未生成')) { showToast('请先生成模块链接'); return; }
     window.open(text, '_blank', 'noopener,noreferrer');
   });
 

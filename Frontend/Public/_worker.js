@@ -159,23 +159,50 @@ async function handleDeleteHistory(env, token, index, request) {
   return jsonResponse({ ok: true, items })
 }
 
-function handleGetModule(client, token, siteBase) {
-  const relayUrl = `${siteBase}/script/${token}.js`
+function parseCoordinate(value) {
+  const n = Number(value)
+  return Number.isFinite(n) ? n : null
+}
+
+async function handleGetModule(env, client, token, siteBase) {
+  const kvErr = requireKv(env)
+  if (kvErr) return kvErr
+  const loc = await env.LOCATIONS.get(`loc:${token}`, 'json')
+  if (!loc) return new Response('location not found for token: ' + token, { status: 404 })
+
+  const lat = parseCoordinate(loc.lat)
+  const lng = parseCoordinate(loc.lng)
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return new Response('invalid saved coordinates for token: ' + token, { status: 400 })
+  }
+
+  const scriptUrl = `${siteBase}/script/${token}.js`
+  const argument = `longitude=${encodeURIComponent(String(lng))}&latitude=${encodeURIComponent(String(lat))}&accuracy=25&logLevel=info`
   const templates = {
+    shadowrocket: `#!name=Apple WLOC 定位修改 (${token})
+#!desc=打开网页选点后，回到 Shadowrocket 更新本模块即可切换定位。
+#!homepage=${siteBase}
+#!author=iOS-Pin
+#!category=Tools
+[Script]
+Apple WLOC = type=http-response,pattern=^https?:\\/\\/gs-loc(-cn)?\\.apple\\.com\\/clls\\/wloc,requires-body=1,binary-body-mode=1,max-size=0,timeout=30,script-path=${scriptUrl},argument=${argument}
+[MITM]
+hostname = %APPEND% gs-loc.apple.com, gs-loc-cn.apple.com
+`,
     surge: `[MITM]
 hostname = %APPEND% gs-loc.apple.com, gs-loc-cn.apple.com
 
 [Script]
-ios-pin = type=http-response,pattern=^https:\\/\\/gs-loc(-cn)?\\.apple\\.com\\/clls\\/wloc,requires-body=1,max-size=0,script-path=${relayUrl}
+ios-pin = type=http-response,pattern=^https:\\/\\/gs-loc(-cn)?\\.apple\\.com\\/clls\\/wloc,requires-body=1,binary-body-mode=1,max-size=0,timeout=30,script-path=${scriptUrl},argument=${argument}
 `,
     loon: `[MITM]
 hostname = gs-loc.apple.com, gs-loc-cn.apple.com
 
 [Script]
-http-response ^https:\\/\\/gs-loc(-cn)?\\.apple\\.com\\/clls\\/wloc script-path=${relayUrl}, requires-body=true, timeout=60, tag=ios-pin
+http-response ^https:\\/\\/gs-loc(-cn)?\\.apple\\.com\\/clls\\/wloc script-path=${scriptUrl}, requires-body=true, binary-body-mode=true, timeout=60, tag=ios-pin
 `,
     qx: `hostname = gs-loc.apple.com, gs-loc-cn.apple.com
-^https:\\/\\/gs-loc(-cn)?\\.apple\\.com\\/clls\\/wloc url script-response-body ${relayUrl}
+^https:\\/\\/gs-loc(-cn)?\\.apple\\.com\\/clls\\/wloc url script-response-body ${scriptUrl}
 `,
     stash: `http:
   mitm:
@@ -183,22 +210,15 @@ http-response ^https:\\/\\/gs-loc(-cn)?\\.apple\\.com\\/clls\\/wloc script-path=
     - gs-loc-cn.apple.com
 script-providers:
   ios-pin:
-    url: ${relayUrl}
+    url: ${scriptUrl}
     interval: 86400
 http-response:
   - match: ^https:\\/\\/gs-loc(-cn)?\\.apple\\.com\\/clls\\/wloc
     name: ios-pin
     type: script
     require-body: true
+    binary-body-mode: true
     provider: ios-pin
-`,
-    shadowrocket: `[General]
-
-[MITM]
-hostname = gs-loc.apple.com, gs-loc-cn.apple.com
-
-[Script]
-ios-pin = type=http-response,pattern=^https:\\/\\/gs-loc(-cn)?\\.apple\\.com\\/clls\\/wloc,requires-body=1,max-size=0,script-path=${relayUrl}
 `
   }
   const content = templates[client]
@@ -236,37 +256,123 @@ async function relayAppleWloc(env, token, request) {
 }
 
 function handleGetScript(token, siteBase) {
-  const js = `const token = ${JSON.stringify(token)};
-const base = ${JSON.stringify(siteBase)};
-function readHeader(name) {
-  const h = $request.headers || {};
-  return h[name] || h[name.toLowerCase()] || h[name.toUpperCase()] || '';
+  const js = `const defaults = { latitude: 0, longitude: 0, accuracy: 25, logLevel: 'info' };
+function parseArgumentString() {
+  const raw = typeof $argument === 'string' ? $argument : '';
+  const out = { ...defaults };
+  if (!raw) return out;
+  for (const part of raw.split('&')) {
+    const i = part.indexOf('=');
+    const key = i >= 0 ? part.slice(0, i) : part;
+    const value = i >= 0 ? part.slice(i + 1) : '';
+    const k = decodeURIComponent(key || '').trim();
+    const v = decodeURIComponent(value || '').trim();
+    if (!k) continue;
+    if (k === 'latitude' || k === 'longitude' || k === 'accuracy') out[k] = Number(v);
+    else out[k] = v;
+  }
+  return out;
 }
-function originalHost() {
-  try { return new URL($request.url).host || 'gs-loc.apple.com'; } catch { return readHeader('Host') || 'gs-loc.apple.com'; }
+function log(message) {
+  try { if (console && console.log) console.log('[ios-pin] ' + message); } catch (e) {}
 }
-function payload() {
-  if (typeof $request.bodyBytes !== 'undefined' && $request.bodyBytes !== null) return { bodyBytes: $request.bodyBytes };
-  return { body: $request.body || '' };
+function bytesFromBody() {
+  if (typeof $response !== 'undefined' && $response && typeof $response.bodyBytes !== 'undefined' && $response.bodyBytes !== null) return new Uint8Array($response.bodyBytes);
+  if (typeof $response !== 'undefined' && $response && $response.body) {
+    const s = $response.body;
+    const arr = new Uint8Array(s.length);
+    for (let i = 0; i < s.length; i++) arr[i] = s.charCodeAt(i) & 255;
+    return arr;
+  }
+  throw new Error('response body is missing');
 }
-async function relay() {
-  const req = {
-    url: base + '/relay/apple/' + token + '/clls/wloc',
-    method: 'POST',
-    headers: {
-      'content-type': readHeader('Content-Type') || 'application/x-www-form-urlencoded',
-      'user-agent': readHeader('User-Agent') || 'locationd/1.0',
-      'x-wloc-upstream-host': originalHost(),
-      'x-wloc-original-url': $request.url
-    },
-    ...payload()
-  };
-  const r = await $task.fetch(req);
-  const out = { headers: r.headers, status: r.statusCode || r.status };
-  if (typeof r.bodyBytes !== 'undefined' && r.bodyBytes !== null) out.bodyBytes = r.bodyBytes; else out.body = r.body;
-  $done(out);
+function zigZagEncode32(value) {
+  return ((value << 1) ^ (value >> 31)) >>> 0;
 }
-relay().catch(err => $done({ status: 502, body: String(err && err.message ? err.message : err) }));
+function encodeVarint(value) {
+  const out = [];
+  let v = value >>> 0;
+  while (v >= 0x80) {
+    out.push((v & 0x7f) | 0x80);
+    v >>>= 7;
+  }
+  out.push(v);
+  return out;
+}
+function replaceFieldVarint(message, fieldNumber, signedValue) {
+  const tag = (fieldNumber << 3) | 0;
+  const replacement = [...encodeVarint(tag), ...encodeVarint(zigZagEncode32(signedValue))];
+  const out = [];
+  let i = 0;
+  let replaced = false;
+  while (i < message.length) {
+    const fieldStart = i;
+    let shift = 0;
+    let tagValue = 0;
+    let tagEnd = i;
+    while (tagEnd < message.length) {
+      const b = message[tagEnd++];
+      tagValue |= (b & 0x7f) << shift;
+      if ((b & 0x80) === 0) break;
+      shift += 7;
+    }
+    if (tagEnd > message.length) break;
+    const wireType = tagValue & 0x7;
+    const fieldNum = tagValue >>> 3;
+    if (wireType === 0) {
+      let valueEnd = tagEnd;
+      while (valueEnd < message.length && (message[valueEnd++] & 0x80) !== 0) {}
+      if (fieldNum === fieldNumber && !replaced) {
+        out.push(...replacement);
+        replaced = true;
+      } else {
+        out.push(...message.slice(fieldStart, valueEnd));
+      }
+      i = valueEnd;
+      continue;
+    }
+    if (wireType === 1) { out.push(...message.slice(fieldStart, tagEnd + 8)); i = tagEnd + 8; continue; }
+    if (wireType === 5) { out.push(...message.slice(fieldStart, tagEnd + 4)); i = tagEnd + 4; continue; }
+    if (wireType === 2) {
+      let len = 0, lenShift = 0, lenEnd = tagEnd;
+      while (lenEnd < message.length) {
+        const b = message[lenEnd++];
+        len |= (b & 0x7f) << lenShift;
+        if ((b & 0x80) === 0) break;
+        lenShift += 7;
+      }
+      const valueEnd = lenEnd + len;
+      out.push(...message.slice(fieldStart, valueEnd));
+      i = valueEnd;
+      continue;
+    }
+    out.push(...message.slice(fieldStart));
+    i = message.length;
+  }
+  return replaced ? new Uint8Array(out) : message;
+}
+function decimalToMicro(value) {
+  return Math.round(Number(value) * 1000000);
+}
+function spoofAppleWlocResponse(bytes, latMicro, lngMicro) {
+  let out = bytes;
+  out = replaceFieldVarint(out, 1, latMicro);
+  out = replaceFieldVarint(out, 2, lngMicro);
+  return out;
+}
+(function main() {
+  try {
+    const cfg = parseArgumentString();
+    if (!Number.isFinite(cfg.latitude) || !Number.isFinite(cfg.longitude)) throw new Error('invalid latitude/longitude argument');
+    const input = bytesFromBody();
+    const output = spoofAppleWlocResponse(input, decimalToMicro(cfg.latitude), decimalToMicro(cfg.longitude));
+    log('spoofed token=' + ${JSON.stringify(token)} + ' lat=' + cfg.latitude + ' lng=' + cfg.longitude);
+    $done({ bodyBytes: output });
+  } catch (err) {
+    log('failed: ' + (err && err.message ? err.message : err));
+    $done({});
+  }
+})();
 `
   return new Response(js, { headers: { 'content-type': 'application/javascript; charset=utf-8' } })
 }
@@ -305,7 +411,7 @@ async function handleRequest(request, env) {
       return handleDeleteHistory(env, decodeURIComponent(match[1]), Number(match[2]), request)
     }
     if (method === 'GET' && (match = pathname.match(/^\/api\/module\/([^/]+)\/([^/]+)$/))) {
-      return handleGetModule(decodeURIComponent(match[1]), decodeURIComponent(match[2]), siteBase)
+      return handleGetModule(env, decodeURIComponent(match[1]), decodeURIComponent(match[2]), siteBase)
     }
     if (method === 'POST' && (match = pathname.match(/^\/apple\/clls\/wloc\/([^/]+)$/))) {
       return relayAppleWloc(env, decodeURIComponent(match[1]), request)
