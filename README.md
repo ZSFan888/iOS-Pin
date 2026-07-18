@@ -14,6 +14,7 @@
 - [第三步：在代理客户端安装模块](#第三步在代理客户端安装模块)
 - [第四步：验证虚拟定位是否生效](#第四步验证虚拟定位是否生效)
 - [常见问题排查](#常见问题排查)
+- [进阶：在网页端添加 KV 绑定](#进阶在网页端添加-kv-绑定)
 - [进阶：访问控制](#进阶访问控制)
 - [进阶：多设备管理](#进阶多设备管理)
 - [进阶：验证 protobuf 字段假设](#进阶验证-protobuf-字段假设)
@@ -48,7 +49,6 @@ iOS-Pin/
 │   └── Scripts/              protobuf 字段转储调试工具
 ├── Modules-Templates/       各代理客户端模块模板说明
 ├── Shortcuts/               iOS 快捷指令占位目录
-├── wrangler.jsonc            Cloudflare Pages 配置（pages_build_output_dir）
 ├── README.md                本文件
 └── DEPLOY.md                详细的 Cloudflare Pages 部署步骤
 ```
@@ -76,6 +76,8 @@ iOS-Pin/
 6. 重新触发一次部署（在 **Deployments** 页面点击最新部署旁的 **Retry deployment** 即可），让 KV 绑定生效。
 
 部署完成后，Cloudflare 会给你一个形如 `https://ios-pin.pages.dev` 的地址——这个地址同时是你的前端控制台地址和后端 API 地址，记下它。之后你只需要 `git push` 到仓库，Pages 就会自动重新构建部署，不需要再手动操作。
+
+> **如果 Settings → Bindings 页面提示"此项目的绑定在通过 wrangler.toml 进行管理"、"了解更多"这类文字，导致你无法在网页上手动添加绑定：** 这是因为仓库根目录里存在 `wrangler.toml`/`wrangler.jsonc` 配置文件，Cloudflare Pages 检测到它之后会认为绑定应该由这个配置文件统一管理，从而**关闭网页手动添加绑定的入口**。本项目已经移除了根目录的 Wrangler 配置文件，绑定完全通过网页控制台管理，如果你是从旧版本升级上来仍遇到这个提示，请确认仓库根目录下**没有** `wrangler.toml` 或 `wrangler.jsonc` 文件，删除后重新推送一次即可恢复网页端绑定入口。详细的网页端绑定图文教程见下方"进阶：在网页端添加 KV 绑定"。
 
 ## 第二步：打开控制台并保存坐标
 
@@ -112,6 +114,50 @@ iOS-Pin/
 | 代理客户端里看不到改写效果 | 确认 MITM 主机名同时包含 `gs-loc.apple.com` 与 `gs-loc-cn.apple.com`，并重启一次 MITM |
 | 定位仍然是真实位置 | 检查代理客户端的 MITM 日志确认请求确实被拦截；某些 App 会缓存旧定位结果，可尝试重启 App 或设备 |
 | 抓包看到响应体，但坐标没变 | 参考下方"进阶：验证 protobuf 字段假设"，可能是 Apple 更新了响应结构 |
+
+## 进阶：在网页端添加 KV 绑定
+
+Cloudflare Pages 支持两种管理绑定（KV、环境变量等）的方式：**通过网页控制台手动添加**，或者**通过仓库里的 `wrangler.toml`/`wrangler.jsonc` 配置文件统一管理**。这两种方式是互斥的——只要 Cloudflare 检测到仓库根目录存在 Wrangler 配置文件，就会认为你选择了"配置文件管理"模式，进而在 **Settings → Bindings** 页面显示一句提示（类似"此项目的绑定在通过 wrangler.toml 进行管理"），并**关闭网页手动添加绑定的按钮**。
+
+本项目采用的是**网页端手动管理绑定**这种方式，更适合不熟悉命令行、只想在浏览器里点几下就完成配置的用户。因此仓库根目录**不包含**任何 `wrangler.toml` 或 `wrangler.jsonc` 文件。如果你在自己的 Fork 或旧版本里仍然看到"绑定由配置文件管理"的提示，请按下面步骤排查。
+
+### 如果你看到"绑定由 wrangler.toml 管理"的提示
+
+1. 检查你仓库的**根目录**（不是 `Worker/` 子目录）下是否存在 `wrangler.toml` 或 `wrangler.jsonc` 文件。
+2. 如果存在，删除这个文件并提交、推送：
+   ```bash
+   git rm wrangler.toml
+   # 或者
+   git rm wrangler.jsonc
+   git commit -m "chore: remove wrangler config to enable dashboard-managed bindings"
+   git push
+   ```
+3. 推送后 Cloudflare Pages 会自动重新构建部署。构建完成后，重新进入该 Pages 项目的 **Settings → Bindings** 页面，之前的提示应该已经消失，"Add binding" 按钮变为可点击状态。
+
+> 注意：`Worker/wrangler.jsonc` 这个文件是给 `Worker/` 子目录下的独立测试/调试脚本用的，它不影响 Pages 项目本身的绑定管理，不需要删除。只有**仓库根目录**下的配置文件才会触发这个限制。
+
+### 完整的网页端添加 KV 绑定教程
+
+1. 登录 [Cloudflare 控制台](https://dash.cloudflare.com)，进入 **Workers & Pages**。
+2. 点击你的 Pages 项目名称，进入项目详情页。
+3. 顶部标签栏切换到 **Settings**。
+4. 左侧或页面中找到 **Bindings**（有些界面版本显示在 **Functions** 分区下）。
+5. 点击 **Add binding**（或 **Add**）按钮。
+6. 在弹出的绑定类型列表中选择 **KV namespace**。
+7. **Variable name**（变量名）一栏，填写 `LOCATIONS`——这个名字必须和代码里 `_worker.js` 读取的绑定名完全一致，大小写敏感，不能改成别的名字。
+8. **KV namespace**（命名空间）一栏：
+   - 如果你之前已经创建过 KV 命名空间，直接从下拉列表里选择它。
+   - 如果还没有创建过，点击下拉列表旁边的 **Create a new namespace** 或类似入口，输入一个便于识别的名字（例如 `ios-pin-locations`），创建后会自动回填到当前绑定的下拉列表里。
+9. 确认无误后点击 **Save**（保存）。
+10. 保存后回到 **Deployments** 标签页，找到当前最新的一次部署，点击右侧的 **⋯**（更多操作）菜单，选择 **Retry deployment**（重新部署）。**这一步不能省略**——新添加或修改的绑定只有在下一次部署中才会真正生效，仅仅点了"Save"而不重新部署的话，站点仍然会读取不到 KV，继续报"保存失败"。
+11. 等待新的部署状态变为 **Success**，再回到你的站点地址刷新页面，重新测试保存坐标。
+
+### 验证绑定是否已经生效
+
+打开你的站点地址，尝试保存一次坐标：
+
+- 如果保存成功并出现在历史记录列表中，说明绑定已经生效。
+- 如果 Toast 提示里出现类似"LOCATIONS KV binding not configured"的文字，说明绑定还没添加成功或还没重新部署，请返回上面步骤 3-11 重新检查。
 
 ## 进阶：访问控制
 

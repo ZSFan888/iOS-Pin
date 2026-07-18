@@ -14,7 +14,8 @@
 - `Frontend/Public/apple-wloc.js`：protobuf 坐标改写逻辑的纯 JS 版本，被 `_worker.js` 用相对路径 `import` 引用（必须放在 `Frontend/Public` 目录内，Pages 不会打包目录外的文件）
 - `Worker/Src/Proto/Apple-wloc.ts`：同一套逻辑的 TypeScript 版本，只用于本地 Vitest 测试和类型检查，不参与线上部署
 - `Worker/Test/`：针对 protobuf 改写逻辑的 Vitest 测试
-- `wrangler.jsonc`：根目录下的 Pages 配置文件，`pages_build_output_dir` 指向 `Frontend/Public`
+
+> 本项目**不在仓库根目录放置** `wrangler.toml` 或 `wrangler.jsonc` 配置文件，这是有意为之：Cloudflare Pages 一旦在根目录检测到这类配置文件，就会认为绑定（KV、环境变量等）应该由配置文件统一管理，从而**关闭网页控制台里手动添加绑定的入口**，页面会提示类似"此项目的绑定在通过 wrangler.toml 进行管理"。为了让你能完全通过网页操作完成部署和配置，本项目选择不使用根目录配置文件，所有绑定都在下面第 4 步的网页界面里手动添加。
 
 ## 3. 创建 Pages 项目并连接 GitHub
 
@@ -34,13 +35,20 @@
 
 ## 4. 添加 KV 命名空间绑定
 
-坐标和历史记录都存储在 Cloudflare KV 里，Pages Functions 需要绑定这个 KV 命名空间才能读写：
+坐标和历史记录都存储在 Cloudflare KV 里，Pages Functions 需要绑定这个 KV 命名空间才能读写。整个过程完全在网页上完成，不需要命令行：
 
-1. 在刚创建的 Pages 项目里，进入 **Settings → Bindings**。
-2. 点击 **Add binding** → 选择 **KV namespace**。
-3. **Variable name** 填写 `LOCATIONS`（必须完全一致，`_worker.js` 里是按这个名字读取的）。
-4. **KV namespace** 选择一个已有命名空间，或者点击 **Create new** 现场新建一个，例如命名为 `ios-pin-locations`。
-5. 保存绑定。
+1. 在刚创建的 Pages 项目里，点击顶部 **Settings** 标签。
+2. 找到 **Bindings** 分区（部分界面版本显示在 **Functions** 分区下）。
+3. 点击 **Add binding**（或 **Add**）按钮。
+
+   > **如果这里显示"此项目的绑定在通过 wrangler.toml 进行管理"之类的提示，且 Add 按钮无法点击：** 说明你的仓库根目录里存在 `wrangler.toml` 或 `wrangler.jsonc` 文件，Cloudflare 会因此关闭网页手动绑定入口。本项目官方仓库的根目录不包含这类文件；如果你是在自己的 Fork 里遇到这个问题，检查根目录（不是 `Worker/` 子目录）下是否有这两个文件，有就删除并 `git push` 一次，Pages 重新构建完成后再回到这个页面即可看到 Add 按钮恢复可用。
+4. 在弹出的绑定类型列表中选择 **KV namespace**。
+5. **Variable name**（变量名）一栏填写 `LOCATIONS`——必须完全一致（大小写敏感），`_worker.js` 是按这个名字读取绑定的。
+6. **KV namespace**（命名空间）一栏：
+   - 如果已经创建过命名空间，直接从下拉列表选择。
+   - 如果还没创建，点击下拉列表旁的 **Create a new namespace**，输入一个名字（例如 `ios-pin-locations`）并创建，创建后会自动填入当前绑定。
+7. 点击 **Save** 保存这个绑定。
+8. **保存后不要以为就结束了**——继续看下面第 6 步，必须重新触发一次部署，绑定才会真正生效。
 
 ## 5.（可选）配置访问控制密钥
 
