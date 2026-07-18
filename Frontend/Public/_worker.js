@@ -5,22 +5,14 @@ function jsonResponse(data, status) {
   })
 }
 
-function parseCoordinate(value) {
-  const n = Number(value)
-  return Number.isFinite(n) ? n : null
-}
-
-function buildArgument(lat, lng) {
-  return `longitude=${encodeURIComponent(String(lng))}&latitude=${encodeURIComponent(String(lat))}&accuracy=25&logLevel=info`
-}
-
-function buildModuleTemplates(scriptUrl, argument) {
+function buildModuleTemplates(scriptUrl, settingsScriptUrl) {
   return {
     shadowrocket: `#!name=Apple WLOC 定位修改
-#!desc=在网页上选好位置后，点击生成，把下方内容粘贴或用链接导入到 Shadowrocket 模块中即可，无需 Token。
+#!desc=固定配置，安装一次即可。之后打开选点页面选择位置并点击"应用到设备"即可切换定位，无需重新导入模块。
 #!category=Tools
 [Script]
-Apple WLOC = type=http-response,pattern=^https?:\\/\\/gs-loc(-cn)?\\.apple\\.com\\/clls\\/wloc,requires-body=1,binary-body-mode=1,max-size=0,timeout=30,script-path=${scriptUrl},argument=${argument}
+Apple WLOC = type=http-response,pattern=^https?:\\/\\/gs-loc(-cn)?\\.apple\\.com\\/clls\\/wloc,requires-body=1,binary-body-mode=1,max-size=0,timeout=30,script-path=${scriptUrl}
+WLOC Settings = type=http-request,pattern=^https?:\\/\\/gs-loc(-cn)?\\.apple\\.com\\/wloc-settings\\/save,requires-body=0,timeout=10,script-path=${settingsScriptUrl}
 [MITM]
 hostname = %APPEND% gs-loc.apple.com, gs-loc-cn.apple.com
 `,
@@ -28,16 +20,19 @@ hostname = %APPEND% gs-loc.apple.com, gs-loc-cn.apple.com
 hostname = %APPEND% gs-loc.apple.com, gs-loc-cn.apple.com
 
 [Script]
-ios-pin = type=http-response,pattern=^https:\\/\\/gs-loc(-cn)?\\.apple\\.com\\/clls\\/wloc,requires-body=1,binary-body-mode=1,max-size=0,timeout=30,script-path=${scriptUrl},argument=${argument}
+ios-pin = type=http-response,pattern=^https:\\/\\/gs-loc(-cn)?\\.apple\\.com\\/clls\\/wloc,requires-body=1,binary-body-mode=1,max-size=0,timeout=30,script-path=${scriptUrl}
+ios-pin-settings = type=http-request,pattern=^https:\\/\\/gs-loc(-cn)?\\.apple\\.com\\/wloc-settings\\/save,requires-body=0,timeout=10,script-path=${settingsScriptUrl}
 `,
     loon: `[MITM]
 hostname = gs-loc.apple.com, gs-loc-cn.apple.com
 
 [Script]
-http-response ^https:\\/\\/gs-loc(-cn)?\\.apple\\.com\\/clls\\/wloc script-path=${scriptUrl}, requires-body=true, binary-body-mode=true, timeout=60, argument=${argument}, tag=ios-pin
+http-response ^https:\\/\\/gs-loc(-cn)?\\.apple\\.com\\/clls\\/wloc script-path=${scriptUrl}, requires-body=true, binary-body-mode=true, timeout=60, tag=ios-pin
+http-request ^https:\\/\\/gs-loc(-cn)?\\.apple\\.com\\/wloc-settings\\/save script-path=${settingsScriptUrl}, timeout=10, tag=ios-pin-settings
 `,
     qx: `hostname = gs-loc.apple.com, gs-loc-cn.apple.com
-^https:\\/\\/gs-loc(-cn)?\\.apple\\.com\\/clls\\/wloc url script-response-body ${scriptUrl}?${argument}
+^https:\\/\\/gs-loc(-cn)?\\.apple\\.com\\/clls\\/wloc url script-response-body ${scriptUrl}
+^https:\\/\\/gs-loc(-cn)?\\.apple\\.com\\/wloc-settings\\/save url script-request-header ${settingsScriptUrl}
 `,
     stash: `http:
   mitm:
@@ -45,7 +40,10 @@ http-response ^https:\\/\\/gs-loc(-cn)?\\.apple\\.com\\/clls\\/wloc script-path=
     - gs-loc-cn.apple.com
 script-providers:
   ios-pin:
-    url: ${scriptUrl}?${argument}
+    url: ${scriptUrl}
+    interval: 86400
+  ios-pin-settings:
+    url: ${settingsScriptUrl}
     interval: 86400
 http-response:
   - match: ^https:\\/\\/gs-loc(-cn)?\\.apple\\.com\\/clls\\/wloc
@@ -54,52 +52,36 @@ http-response:
     require-body: true
     binary-body-mode: true
     provider: ios-pin
+http-request:
+  - match: ^https:\\/\\/gs-loc(-cn)?\\.apple\\.com\\/wloc-settings\\/save
+    name: ios-pin-settings
+    type: script
+    provider: ios-pin-settings
 `
   }
 }
 
-function handleGetModule(client, request, siteBase) {
-  const url = new URL(request.url)
-  const lat = parseCoordinate(url.searchParams.get('lat'))
-  const lng = parseCoordinate(url.searchParams.get('lng'))
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-    return new Response('missing or invalid lat/lng query params, e.g. ?lat=35.6762&lng=139.6503', { status: 400 })
-  }
+function handleGetModule(client, siteBase) {
   const scriptUrl = `${siteBase}/script/wloc.js`
-  const argument = buildArgument(lat, lng)
-  const templates = buildModuleTemplates(scriptUrl, argument)
+  const settingsScriptUrl = `${siteBase}/script/wloc-settings.js`
+  const templates = buildModuleTemplates(scriptUrl, settingsScriptUrl)
   const content = templates[client]
   if (!content) return new Response('unsupported client: ' + client, { status: 404 })
   return new Response(content, { headers: { 'content-type': 'text/plain; charset=utf-8' } })
 }
 
-function handleGetScript(request) {
-  const url = new URL(request.url)
-  const qsLat = url.searchParams.get('latitude')
-  const qsLng = url.searchParams.get('longitude')
-  const js = `const defaults = { latitude: 0, longitude: 0, accuracy: 25, logLevel: 'info' };
-function parseArgumentString() {
-  const raw = typeof $argument === 'string' ? $argument : '';
-  const out = { ...defaults };
-  const qsLat = ${qsLat ? JSON.stringify(qsLat) : 'null'};
-  const qsLng = ${qsLng ? JSON.stringify(qsLng) : 'null'};
-  if (qsLat !== null) out.latitude = Number(qsLat);
-  if (qsLng !== null) out.longitude = Number(qsLng);
-  if (!raw) return out;
-  for (const part of raw.split('&')) {
-    const i = part.indexOf('=');
-    const key = i >= 0 ? part.slice(0, i) : part;
-    const value = i >= 0 ? part.slice(i + 1) : '';
-    const k = decodeURIComponent(key || '').trim();
-    const v = decodeURIComponent(value || '').trim();
-    if (!k) continue;
-    if (k === 'latitude' || k === 'longitude' || k === 'accuracy') out[k] = Number(v);
-    else out[k] = v;
-  }
-  return out;
-}
-function log(message) {
+function handleGetScript() {
+  const js = `function log(message) {
   try { if (console && console.log) console.log('[ios-pin] ' + message); } catch (e) {}
+}
+function readPersisted() {
+  try {
+    if (typeof $persistentStore !== 'undefined' && $persistentStore && $persistentStore.read) {
+      const raw = $persistentStore.read('ios-pin-location');
+      if (raw) return JSON.parse(raw);
+    }
+  } catch (e) {}
+  return null;
 }
 function bytesFromBody() {
   if (typeof $response !== 'undefined' && $response && typeof $response.bodyBytes !== 'undefined' && $response.bodyBytes !== null) return new Uint8Array($response.bodyBytes);
@@ -187,15 +169,60 @@ function spoofAppleWlocResponse(bytes, latMicro, lngMicro) {
 }
 (function main() {
   try {
-    const cfg = parseArgumentString();
-    if (!Number.isFinite(cfg.latitude) || !Number.isFinite(cfg.longitude)) throw new Error('invalid latitude/longitude argument');
+    const loc = readPersisted();
+    if (!loc || !Number.isFinite(loc.latitude) || !Number.isFinite(loc.longitude)) {
+      log('no saved location, passing through original response');
+      $done({});
+      return;
+    }
     const input = bytesFromBody();
-    const output = spoofAppleWlocResponse(input, decimalToMicro(cfg.latitude), decimalToMicro(cfg.longitude));
-    log('spoofed lat=' + cfg.latitude + ' lng=' + cfg.longitude);
+    const output = spoofAppleWlocResponse(input, decimalToMicro(loc.latitude), decimalToMicro(loc.longitude));
+    log('spoofed lat=' + loc.latitude + ' lng=' + loc.longitude);
     $done({ bodyBytes: output });
   } catch (err) {
     log('failed: ' + (err && err.message ? err.message : err));
     $done({});
+  }
+})();
+`
+  return new Response(js, { headers: { 'content-type': 'application/javascript; charset=utf-8' } })
+}
+
+function handleGetSettingsScript() {
+  const js = `function log(message) {
+  try { if (console && console.log) console.log('[ios-pin-settings] ' + message); } catch (e) {}
+}
+function parseQuery(urlString) {
+  const out = {};
+  const qIndex = urlString.indexOf('?');
+  if (qIndex === -1) return out;
+  const qs = urlString.slice(qIndex + 1);
+  for (const part of qs.split('&')) {
+    const i = part.indexOf('=');
+    const key = i >= 0 ? part.slice(0, i) : part;
+    const value = i >= 0 ? part.slice(i + 1) : '';
+    const k = decodeURIComponent(key || '').trim();
+    const v = decodeURIComponent(value || '').trim();
+    if (k) out[k] = v;
+  }
+  return out;
+}
+(function main() {
+  try {
+    const requestUrl = (typeof $request !== 'undefined' && $request && $request.url) ? $request.url : '';
+    const params = parseQuery(requestUrl);
+    const lat = Number(params.lat);
+    const lng = Number(params.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) throw new Error('missing lat/lng in request');
+    const payload = JSON.stringify({ latitude: lat, longitude: lng, savedAt: Date.now() });
+    if (typeof $persistentStore !== 'undefined' && $persistentStore && $persistentStore.write) {
+      $persistentStore.write(payload, 'ios-pin-location');
+    }
+    log('saved lat=' + lat + ' lng=' + lng);
+    $done({ response: { status: 200, headers: { 'content-type': 'application/json' }, body: '{"ok":true}' } });
+  } catch (err) {
+    log('failed: ' + (err && err.message ? err.message : err));
+    $done({ response: { status: 400, body: '{"ok":false}' } });
   }
 })();
 `
@@ -221,10 +248,16 @@ async function handleRequest(request, env) {
     let match
 
     if (method === 'GET' && (match = pathname.match(/^\/api\/module\/([^/]+)$/))) {
-      return handleGetModule(decodeURIComponent(match[1]), request, siteBase)
+      return handleGetModule(decodeURIComponent(match[1]), siteBase)
     }
     if (method === 'GET' && pathname === '/script/wloc.js') {
-      return handleGetScript(request)
+      return handleGetScript()
+    }
+    if (method === 'GET' && pathname === '/script/wloc-settings.js') {
+      return handleGetSettingsScript()
+    }
+    if (method === 'GET' && pathname === '/wloc-settings/save') {
+      return jsonResponse({ ok: true, note: 'this endpoint is intercepted on-device by the proxy MITM script; reaching the real server means the module/MITM is not active yet' })
     }
 
     return env.ASSETS.fetch(request)

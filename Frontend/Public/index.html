@@ -192,7 +192,7 @@ input,select{font:inherit;color:inherit}
     <div class="panel-section">
       <div class="section-title">使用方式</div>
       <div class="field">
-        <p class="field-note">在地图上点选或搜索一个位置，切换下方的代理工具标签，点击生成即可获得模块链接，无需 Token 或 API Key。</p>
+        <p class="field-note">第一步：选择你的代理工具，把下方链接添加为模块（只需一次）。第二步：在地图上选点后点击“应用到设备”即可切换定位，无需 Token、无需重复导入模块。</p>
       </div>
     </div>
 
@@ -212,7 +212,7 @@ input,select{font:inherit;color:inherit}
     </div>
 
     <div class="panel-section">
-      <div class="section-title">生成代理模块</div>
+      <div class="section-title">安装模块（一次性）</div>
       <div class="tabs" role="tablist" aria-label="选择代理客户端">
         <button class="tab" role="tab" aria-selected="true" data-client="shadowrocket">小火箭</button>
         <button class="tab" role="tab" aria-selected="false" data-client="surge">Surge</button>
@@ -220,9 +220,8 @@ input,select{font:inherit;color:inherit}
         <button class="tab" role="tab" aria-selected="false" data-client="qx">Quantumult X</button>
         <button class="tab" role="tab" aria-selected="false" data-client="stash">Stash</button>
       </div>
-      <button class="btn btn-ghost" id="genModule">生成模块链接</button>
       <div class="module-out">
-        <code id="moduleUrl">尚未生成，先在地图上选点再生成模块链接</code>
+        <code id="moduleUrl"></code>
         <div class="row-2">
           <button class="copy-btn" id="copyUrl">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
@@ -234,6 +233,16 @@ input,select{font:inherit;color:inherit}
           </button>
         </div>
       </div>
+      <p class="field-note">此链接固定不变，只需要在代理工具里添加一次并启用 MITM。之后每次选好位置，点下方"应用到设备"即可切换定位，无需重新导入模块。</p>
+    </div>
+
+    <div class="panel-section">
+      <div class="section-title">应用位置</div>
+      <button class="btn btn-primary" id="apply">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg>
+        应用到设备
+      </button>
+      <p class="field-note">需要在设备上开启代理并启用 MITM 才会生效；点击后会尝试写入设备本地存储。</p>
     </div>
 
     <div class="panel-section" style="flex:1">
@@ -343,36 +352,43 @@ input,select{font:inherit;color:inherit}
   function renderHistory(){
     historyList.innerHTML = '<div class="empty-state">' +
       '<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M12 2C7.6 2 4 5.4 4 9.6 4 15 12 22 12 22s8-7 8-12.4C20 5.4 16.4 2 12 2z"/><circle cx="12" cy="9.6" r="2.6"/></svg>' +
-      '<p>在地图上选点后，切换上方的代理工具标签并点击“生成模块链接”，无需 Token</p></div>';
+      '<p>安装一次模块后，之后每次选点只需点击“应用到设备”，不用重新导入模块</p></div>';
   }
   const historyList = document.getElementById('historyList');
   renderHistory();
 
-  let activeClient = 'shadowrocket';
+  const moduleUrlEl = document.getElementById('moduleUrl');
+  function updateModuleUrl(client){
+    const base = window.location.origin;
+    moduleUrlEl.textContent = base + '/api/module/' + client;
+  }
   document.querySelectorAll('.tab').forEach(tab => tab.addEventListener('click', () => {
     document.querySelectorAll('.tab').forEach(t2 => t2.setAttribute('aria-selected', 'false'));
     tab.setAttribute('aria-selected', 'true');
-    activeClient = tab.dataset.client;
-    generateModuleUrl();
+    updateModuleUrl(tab.dataset.client);
   }));
+  updateModuleUrl('shadowrocket');
 
-  const moduleUrlEl = document.getElementById('moduleUrl');
-  function generateModuleUrl(){
-    const lat = parseFloat(latEl.value), lng = parseFloat(lngEl.value);
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) { showToast('请先在地图上选点'); return; }
-    const base = window.location.origin;
-    moduleUrlEl.textContent = base + '/api/module/' + activeClient + '?lat=' + lat.toFixed(6) + '&lng=' + lng.toFixed(6);
-  }
-  document.getElementById('genModule').addEventListener('click', generateModuleUrl);
   document.getElementById('copyUrl').addEventListener('click', async () => {
     const text = moduleUrlEl.textContent;
-    if (!text || text.startsWith('尚未生成')) { showToast('请先生成模块链接'); return; }
+    if (!text) { showToast('模块链接为空'); return; }
     try { await navigator.clipboard.writeText(text); showToast('已复制模块地址'); } catch (e) { showToast('复制失败'); }
   });
   document.getElementById('openUrl').addEventListener('click', () => {
     const text = moduleUrlEl.textContent;
-    if (!text || text.startsWith('尚未生成')) { showToast('请先生成模块链接'); return; }
+    if (!text) { showToast('模块链接为空'); return; }
     window.open(text, '_blank', 'noopener,noreferrer');
+  });
+
+  document.getElementById('apply').addEventListener('click', async () => {
+    const lat = parseFloat(latEl.value), lng = parseFloat(lngEl.value);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) { showToast('请先在地图上选点'); return; }
+    try {
+      const res = await fetch('https://gs-loc.apple.com/wloc-settings/save?lat=' + lat.toFixed(6) + '&lng=' + lng.toFixed(6), { mode: 'no-cors' });
+      showToast('已发送，若代理与 MITM 已开启，设备定位已更新');
+    } catch (err) {
+      showToast('发送完成（跨域响应不可读属正常现象），若未生效请检查代理是否开启');
+    }
   });
 
   const searchInput = document.getElementById('searchInput');
