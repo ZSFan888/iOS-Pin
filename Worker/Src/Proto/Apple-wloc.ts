@@ -6,14 +6,28 @@ export type Coord = {
 const UINT64_MASK = (1n << 64n) - 1n
 
 /**
- * Encodes a signed 64-bit integer as a protobuf varint using standard two's
- * complement wrapping (this is what proto3 `int64`/`int32` fields use on the
- * wire — NOT zigzag encoding, which is reserved for `sint32`/`sint64`).
+ * Apple WLOC response wire format (confirmed against public reverse-engineering
+ * write-ups — see Worker/Test/Fixtures/README.md for sources):
  *
- * IMPORTANT: Apple's actual wire type for lat/lng fields has not been
- * confirmed against a real capture yet (see Worker/Test/Fixtures/README.md).
- * If real captures show zigzag encoding instead, swap this out for
- * `encodeZigzagVarint` below. Both are provided so switching is a one-line change.
+ *   [10-byte opaque header][repeated top-level field 2 = AccessPoint entry]
+ *
+ *   AccessPoint entry:
+ *     field 1 (bytes/string) = BSSID, e.g. "64:d8:14:72:60:c"
+ *     field 2 (bytes)        = nested Coordinate message
+ *       Coordinate:
+ *         field 1 (varint) = latitude,  scaled by 1e8 (two's complement wraps
+ *                             to a 10-byte varint for "unknown"/negative-ish
+ *                             sentinel values like 0xfffffffbcf1dcc00 —
+ *                             this is plain varint, NOT zigzag)
+ *         field 2 (varint) = longitude, scaled by 1e8, same encoding as above
+ *         field 3, 5, 6, 11, 12 (varint) = accuracy / channel / misc, left untouched
+ *     field 21 (varint, optional) = misc counter, left untouched
+ *
+ * Coordinates are plain (non-zigzag) varints — confirmed by the public sample
+ * `135582881 * 1e-8 = 1.35544532`, which only round-trips correctly without
+ * zigzag decoding. `encodeZigzagVarint`/`decodeZigzagVarint` are kept below
+ * in case a future Apple response revision switches encodings; swapping is a
+ * one-line change in `replaceCoordinateMessage`.
  */
 function encodeVarint(value: bigint): number[] {
   const out: number[] = []
@@ -76,7 +90,13 @@ function skipField(bytes: Uint8Array, offset: number, wireType: number) {
   throw new Error('unsupported wire type: ' + wireType)
 }
 
-function replaceLocationMessage(message: Uint8Array, latMicro: bigint, lngMicro: bigint) {
+/**
+ * Rewrites the innermost Coordinate message (field 1 = lat, field 2 = lng,
+ * both plain varints scaled by 1e8). Any other fields (accuracy, channel,
+ * etc.) are copied through untouched. If lat/lng fields are missing they are
+ * appended, matching proto3 "field absent = default" semantics.
+ */
+function replaceCoordinateMessage(message: Uint8Array, latMicro: bigint, lngMicro: bigint) {
   const out: number[] = []
   let i = 0
   let replacedLat = false
@@ -89,15 +109,10 @@ function replaceLocationMessage(message: Uint8Array, latMicro: bigint, lngMicro:
     i = tag.next
     if (wireType === 0 && (fieldNo === 1 || fieldNo === 2)) {
       const decoded = decodeVarint(message, i)
-      if (fieldNo === 1) {
-        out.push(...message.slice(fieldStart, tag.next))
-        out.push(...encodeVarint(latMicro))
-        replacedLat = true
-      } else {
-        out.push(...message.slice(fieldStart, tag.next))
-        out.push(...encodeVarint(lngMicro))
-        replacedLng = true
-      }
+      out.push(...message.slice(fieldStart, tag.next))
+      out.push(...encodeVarint(fieldNo === 1 ? latMicro : lngMicro))
+      if (fieldNo === 1) replacedLat = true
+      else replacedLng = true
       i = decoded.next
       continue
     }
@@ -106,16 +121,57 @@ function replaceLocationMessage(message: Uint8Array, latMicro: bigint, lngMicro:
     i = next
   }
   if (!replacedLat) {
-    out.push(...encodeVarint(8n))
+    out.push(...encodeVarint(1n << 3n))
     out.push(...encodeVarint(latMicro))
   }
   if (!replacedLng) {
-    out.push(...encodeVarint(16n))
+    out.push(...encodeVarint(2n << 3n))
     out.push(...encodeVarint(lngMicro))
   }
   return new Uint8Array(out)
 }
 
+/**
+ * Rewrites a single AccessPoint entry (field 1 = BSSID, field 2 = nested
+ * Coordinate message). Only field 2 is rewritten; the BSSID and any trailing
+ * metadata fields (channel, signal, timestamp, etc.) pass through unchanged
+ * so the response still looks structurally authentic to locationd.
+ */
+function replaceAccessPointEntry(entry: Uint8Array, latMicro: bigint, lngMicro: bigint) {
+  const out: number[] = []
+  let i = 0
+  while (i < entry.length) {
+    const tag = decodeVarint(entry, i)
+    const fieldNo = Number(tag.value >> 3n)
+    const wireType = Number(tag.value & 0x07n)
+    const fieldStart = i
+    i = tag.next
+    if (fieldNo === 2 && wireType === 2) {
+      const len = decodeVarint(entry, i)
+      const msgStart = len.next
+      const msgEnd = msgStart + Number(len.value)
+      const original = entry.slice(msgStart, msgEnd)
+      const replaced = replaceCoordinateMessage(original, latMicro, lngMicro)
+      out.push(...entry.slice(fieldStart, tag.next))
+      out.push(...encodeVarint(BigInt(replaced.length)))
+      out.push(...replaced)
+      i = msgEnd
+      continue
+    }
+    const next = skipField(entry, i, wireType)
+    out.push(...entry.slice(fieldStart, next))
+    i = next
+  }
+  return new Uint8Array(out)
+}
+
+/**
+ * Rewrites every AccessPoint entry (top-level field 2) in an Apple WLOC
+ * response body to report the same spoofed coordinate. Rewriting *all*
+ * entries — not just the first — matters because locationd trilaterates
+ * using multiple entries; leaving real coordinates on other entries would
+ * pull the computed fix back toward the true location.
+ */
 export function spoofAppleWlocResponse(body: Uint8Array, coord: Coord) {
   if (body.length <= 10) return body
   const prefix = body.slice(0, 10)
@@ -133,7 +189,7 @@ export function spoofAppleWlocResponse(body: Uint8Array, coord: Coord) {
       const msgStart = len.next
       const msgEnd = msgStart + Number(len.value)
       const original = message.slice(msgStart, msgEnd)
-      const replaced = replaceLocationMessage(original, coord.latMicro, coord.lngMicro)
+      const replaced = replaceAccessPointEntry(original, coord.latMicro, coord.lngMicro)
       out.push(...message.slice(fieldStart, tag.next))
       out.push(...encodeVarint(BigInt(replaced.length)))
       out.push(...replaced)

@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest'
+import { readFileSync, existsSync } from 'node:fs'
+import { join } from 'node:path'
 import {
   spoofAppleWlocResponse,
   decimalToMicro,
@@ -10,29 +12,68 @@ import {
   toSigned64
 } from '../Src/Proto/Apple-wloc'
 
-function buildFakeWlocResponse(latMicro: bigint, lngMicro: bigint): Uint8Array {
+function buildFakeWlocResponse(latMicro: bigint, lngMicro: bigint, bssid = '64:d8:14:72:60:c'): Uint8Array {
   const header = new Uint8Array(10).fill(0)
-  const inner: number[] = []
-  inner.push(0x08)
-  inner.push(...encodeVarint(latMicro))
-  inner.push(0x10)
-  inner.push(...encodeVarint(lngMicro))
-  const innerBytes = new Uint8Array(inner)
+
+  const coordinate: number[] = []
+  coordinate.push(0x08)
+  coordinate.push(...encodeVarint(latMicro))
+  coordinate.push(0x10)
+  coordinate.push(...encodeVarint(lngMicro))
+
+  const bssidBytes = Array.from(new TextEncoder().encode(bssid))
+  const accessPoint: number[] = []
+  accessPoint.push(0x0a)
+  accessPoint.push(...encodeVarint(BigInt(bssidBytes.length)))
+  accessPoint.push(...bssidBytes)
+  accessPoint.push(0x12)
+  accessPoint.push(...encodeVarint(BigInt(coordinate.length)))
+  accessPoint.push(...coordinate)
+
   const outer: number[] = []
   outer.push(0x12)
-  outer.push(...encodeVarint(BigInt(innerBytes.length)))
-  outer.push(...innerBytes)
+  outer.push(...encodeVarint(BigInt(accessPoint.length)))
+  outer.push(...accessPoint)
+
   const full = new Uint8Array(header.length + outer.length)
   full.set(header, 0)
   full.set(new Uint8Array(outer), header.length)
   return full
 }
 
-function extractLatLngFromSpoofedMessage(body: Uint8Array): { lat: bigint; lng: bigint } {
+function buildFakeWlocResponseMultiEntry(entries: Array<{ lat: bigint; lng: bigint; bssid: string }>): Uint8Array {
+  const header = new Uint8Array(10).fill(0)
+  const out: number[] = []
+  for (const entry of entries) {
+    const coordinate: number[] = []
+    coordinate.push(0x08)
+    coordinate.push(...encodeVarint(entry.lat))
+    coordinate.push(0x10)
+    coordinate.push(...encodeVarint(entry.lng))
+
+    const bssidBytes = Array.from(new TextEncoder().encode(entry.bssid))
+    const accessPoint: number[] = []
+    accessPoint.push(0x0a)
+    accessPoint.push(...encodeVarint(BigInt(bssidBytes.length)))
+    accessPoint.push(...bssidBytes)
+    accessPoint.push(0x12)
+    accessPoint.push(...encodeVarint(BigInt(coordinate.length)))
+    accessPoint.push(...coordinate)
+
+    out.push(0x12)
+    out.push(...encodeVarint(BigInt(accessPoint.length)))
+    out.push(...accessPoint)
+  }
+  const full = new Uint8Array(header.length + out.length)
+  full.set(header, 0)
+  full.set(new Uint8Array(out), header.length)
+  return full
+}
+
+function extractEntriesFromSpoofedMessage(body: Uint8Array): Array<{ bssid: string; lat: bigint; lng: bigint }> {
   const message = body.slice(10)
+  const results: Array<{ bssid: string; lat: bigint; lng: bigint }> = []
   let i = 0
-  let lat = 0n
-  let lng = 0n
   while (i < message.length) {
     const tag = decodeVarint(message, i)
     const fieldNo = Number(tag.value >> 3n)
@@ -42,15 +83,44 @@ function extractLatLngFromSpoofedMessage(body: Uint8Array): { lat: bigint; lng: 
       const len = decodeVarint(message, i)
       let j = len.next
       const end = j + Number(len.value)
+      let bssid = ''
+      let lat = 0n
+      let lng = 0n
       while (j < end) {
-        const innerTag = decodeVarint(message, j)
-        const innerFieldNo = Number(innerTag.value >> 3n)
-        j = innerTag.next
-        const val = decodeVarint(message, j)
-        if (innerFieldNo === 1) lat = toSigned64(val.value)
-        if (innerFieldNo === 2) lng = toSigned64(val.value)
-        j = val.next
+        const apTag = decodeVarint(message, j)
+        const apFieldNo = Number(apTag.value >> 3n)
+        const apWireType = Number(apTag.value & 0x07n)
+        j = apTag.next
+        if (apFieldNo === 1 && apWireType === 2) {
+          const apLen = decodeVarint(message, j)
+          const strStart = apLen.next
+          const strEnd = strStart + Number(apLen.value)
+          bssid = new TextDecoder().decode(message.slice(strStart, strEnd))
+          j = strEnd
+        } else if (apFieldNo === 2 && apWireType === 2) {
+          const coordLen = decodeVarint(message, j)
+          let k = coordLen.next
+          const coordEnd = k + Number(coordLen.value)
+          while (k < coordEnd) {
+            const coordTag = decodeVarint(message, k)
+            const coordFieldNo = Number(coordTag.value >> 3n)
+            k = coordTag.next
+            const val = decodeVarint(message, k)
+            if (coordFieldNo === 1) lat = toSigned64(val.value)
+            if (coordFieldNo === 2) lng = toSigned64(val.value)
+            k = val.next
+          }
+          j = coordEnd
+        } else if (apWireType === 0) {
+          j = decodeVarint(message, j).next
+        } else if (apWireType === 2) {
+          const skipLen = decodeVarint(message, j)
+          j = skipLen.next + Number(skipLen.value)
+        } else {
+          throw new Error('unexpected wire type in access point entry')
+        }
       }
+      results.push({ bssid, lat, lng })
       i = end
       continue
     }
@@ -63,11 +133,11 @@ function extractLatLngFromSpoofedMessage(body: Uint8Array): { lat: bigint; lng: 
       throw new Error('unexpected wire type in test fixture')
     }
   }
-  return { lat, lng }
+  return results
 }
 
 describe('spoofAppleWlocResponse', () => {
-  it('replaces latitude and longitude fields inside the location submessage', () => {
+  it('replaces latitude and longitude fields inside the nested Coordinate submessage', () => {
     const original = buildFakeWlocResponse(decimalToMicro(35.0), decimalToMicro(139.0))
     const targetLat = decimalToMicro(48.8566)
     const targetLng = decimalToMicro(2.3522)
@@ -82,14 +152,42 @@ describe('spoofAppleWlocResponse', () => {
     expect(result).toEqual(tiny)
   })
 
+  it('preserves the BSSID field while rewriting only the coordinate', () => {
+    const original = buildFakeWlocResponse(decimalToMicro(35.0), decimalToMicro(139.0), '64:d8:14:72:60:c')
+    const spoofed = spoofAppleWlocResponse(original, {
+      latMicro: decimalToMicro(48.8566),
+      lngMicro: decimalToMicro(2.3522)
+    })
+    const [entry] = extractEntriesFromSpoofedMessage(spoofed)
+    expect(entry.bssid).toBe('64:d8:14:72:60:c')
+  })
+
+  it('rewrites coordinates on every AccessPoint entry, not just the first', () => {
+    const original = buildFakeWlocResponseMultiEntry([
+      { lat: decimalToMicro(35.0), lng: decimalToMicro(139.0), bssid: '64:d8:14:72:60:c' },
+      { lat: decimalToMicro(10.0), lng: decimalToMicro(20.0), bssid: '10:bd:18:5f:e9:83' },
+      { lat: decimalToMicro(-5.0), lng: decimalToMicro(-90.0), bssid: '98:1:a7:e6:85:70' }
+    ])
+    const targetLat = decimalToMicro(48.8566)
+    const targetLng = decimalToMicro(2.3522)
+    const spoofed = spoofAppleWlocResponse(original, { latMicro: targetLat, lngMicro: targetLng })
+    const entries = extractEntriesFromSpoofedMessage(spoofed)
+    expect(entries).toHaveLength(3)
+    for (const entry of entries) {
+      expect(entry.lat).toBe(targetLat)
+      expect(entry.lng).toBe(targetLng)
+    }
+    expect(entries.map(e => e.bssid)).toEqual(['64:d8:14:72:60:c', '10:bd:18:5f:e9:83', '98:1:a7:e6:85:70'])
+  })
+
   it('round-trips a negative latitude and negative longitude correctly (Southern/Western hemisphere)', () => {
     const original = buildFakeWlocResponse(decimalToMicro(35.0), decimalToMicro(139.0))
-    const targetLat = decimalToMicro(-33.8688) // Sydney
-    const targetLng = decimalToMicro(-70.6693) // negative longitude edge case
+    const targetLat = decimalToMicro(-33.8688)
+    const targetLng = decimalToMicro(-70.6693)
     const spoofed = spoofAppleWlocResponse(original, { latMicro: targetLat, lngMicro: targetLng })
-    const { lat, lng } = extractLatLngFromSpoofedMessage(spoofed)
-    expect(lat).toBe(targetLat)
-    expect(lng).toBe(targetLng)
+    const [entry] = extractEntriesFromSpoofedMessage(spoofed)
+    expect(entry.lat).toBe(targetLat)
+    expect(entry.lng).toBe(targetLng)
   })
 
   it('round-trips positive coordinates without sign corruption', () => {
@@ -97,9 +195,9 @@ describe('spoofAppleWlocResponse', () => {
     const targetLat = decimalToMicro(48.8566)
     const targetLng = decimalToMicro(2.3522)
     const spoofed = spoofAppleWlocResponse(original, { latMicro: targetLat, lngMicro: targetLng })
-    const { lat, lng } = extractLatLngFromSpoofedMessage(spoofed)
-    expect(lat).toBe(targetLat)
-    expect(lng).toBe(targetLng)
+    const [entry] = extractEntriesFromSpoofedMessage(spoofed)
+    expect(entry.lat).toBe(targetLat)
+    expect(entry.lng).toBe(targetLng)
   })
 })
 
@@ -145,15 +243,27 @@ describe('varint encoding primitives', () => {
   })
 })
 
-describe('capture fixture regression (manual)', () => {
-  it.skip('replace with a real captured gs-loc response to validate field offsets', () => {
-    // Steps:
-    // 1. Capture a real response body via Surge/Loon MITM logging on gs-loc.apple.com/clls/wloc
-    // 2. Save raw bytes to Worker/Test/Fixtures/sample-01.bin
-    // 3. Load it here with Node's fs.readFileSync, run spoofAppleWlocResponse, and manually
-    //    decode the result with a protobuf inspector to confirm lat/lng landed correctly.
-    // 4. If the real capture uses zigzag (sint64) encoding instead of plain int64, switch
-    //    replaceLocationMessage in Apple-wloc.ts to use encodeZigzagVarint/decodeZigzagVarint.
-    expect(true).toBe(true)
+describe('capture fixture regression', () => {
+  const fixturePath = join(__dirname, 'Fixtures', 'sample-01.bin')
+  const hasFixture = existsSync(fixturePath)
+
+  it.skipIf(!hasFixture)("rewrites a real captured gs-loc response without throwing and changes every entry's coordinate", () => {
+    const original = new Uint8Array(readFileSync(fixturePath))
+    const targetLat = decimalToMicro(48.8566)
+    const targetLng = decimalToMicro(2.3522)
+    const spoofed = spoofAppleWlocResponse(original, { latMicro: targetLat, lngMicro: targetLng })
+    expect(spoofed.length).toBeGreaterThan(0)
+    const entries = extractEntriesFromSpoofedMessage(spoofed)
+    expect(entries.length).toBeGreaterThan(0)
+    for (const entry of entries) {
+      expect(entry.lat).toBe(targetLat)
+      expect(entry.lng).toBe(targetLng)
+    }
   })
+
+  if (!hasFixture) {
+    it.skip('no real capture found — see Worker/Test/Fixtures/README.md to add one', () => {
+      expect(true).toBe(true)
+    })
+  }
 })
