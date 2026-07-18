@@ -160,7 +160,7 @@ input,select{font:inherit;color:inherit}
     <span>iOS Pin Console</span>
   </div>
   <div class="topbar-actions">
-    <span class="status-pill"><span class="dot" aria-hidden="true"></span>Worker 未连接</span>
+    <span class="status-pill"><span class="dot" aria-hidden="true"></span>站点未连接</span>
     <button class="icon-btn" id="themeToggle" aria-label="Switch to light mode">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
     </button>
@@ -198,10 +198,10 @@ input,select{font:inherit;color:inherit}
       </button>
     </div>
     <div class="panel-section">
-      <div class="section-title">Worker 连接</div>
+      <div class="section-title">站点连接</div>
       <div class="field">
-        <label for="base">Worker 地址</label>
-        <input id="base" type="url" placeholder="https://your-worker.workers.dev" autocomplete="off" />
+        <label for="base">站点地址</label>
+        <input id="base" type="url" placeholder="https://your-project.workers.dev" autocomplete="off" />
       </div>
       <div class="field">
         <label for="token">设备 Token</label>
@@ -227,7 +227,7 @@ input,select{font:inherit;color:inherit}
       </div>
       <button class="btn btn-primary" id="save">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg>
-        保存坐标到 Worker
+        保存坐标到站点
       </button>
     </div>
 
@@ -366,7 +366,7 @@ input,select{font:inherit;color:inherit}
 
   function renderDevices(){
     if (devices.length === 0) {
-      deviceListEl.innerHTML = '<div class="device-empty">还没有设备，先填写 Worker 地址与 Token 后点击“添加新设备”</div>';
+      deviceListEl.innerHTML = '<div class="device-empty">还没有设备，先填写 站点地址与 Token 后点击“添加新设备”</div>';
       return;
     }
     deviceListEl.innerHTML = devices.map((d, idx) => (
@@ -395,7 +395,7 @@ input,select{font:inherit;color:inherit}
 
   document.getElementById('addDevice').addEventListener('click', () => {
     const b = currentBase(), t = currentToken();
-    if (!b || !t) { showToast('请先填写 Worker 地址和 Token'); return; }
+    if (!b || !t) { showToast('请先填写 站点地址和 Token'); return; }
     const exists = devices.findIndex(d => d.base === b && d.token === t);
     if (exists >= 0) {
       activeDeviceIdx = exists;
@@ -498,29 +498,41 @@ input,select{font:inherit;color:inherit}
     const t = currentToken();
     const lat = parseFloat(latEl.value), lng = parseFloat(lngEl.value);
     if (!b || !t || !Number.isFinite(lat) || !Number.isFinite(lng)) {
-      showToast('请填写 Worker 地址、Token 和坐标');
+      showToast('请填写 站点地址、Token 和坐标');
       return;
     }
     try {
       const apiKey = document.getElementById('apiKey').value.trim();
       const authHeaders = apiKey ? { 'content-type': 'application/json', 'x-wloc-key': apiKey } : { 'content-type': 'application/json' };
-      await fetch(b + '/api/location/' + t, {
+      const locRes = await fetch(b + '/api/location/' + t, {
         method: 'POST',
         headers: authHeaders,
         body: JSON.stringify({ lat, lng })
       });
+      if (!locRes.ok) {
+        let msg = '保存失败（HTTP ' + locRes.status + '）';
+        try { const errData = await locRes.json(); if (errData && errData.error) msg = errData.error; } catch (e) {}
+        showToast(msg);
+        return;
+      }
       const label = lastReverseLabel || (searchInput && searchInput.value.trim() ? searchInput.value.trim() : (lat.toFixed(4) + ', ' + lng.toFixed(4)));
       const res = await fetch(b + '/api/history/' + t, {
         method: 'POST',
         headers: authHeaders,
         body: JSON.stringify({ label, lat, lng })
       });
+      if (!res.ok) {
+        let msg = '保存失败（HTTP ' + res.status + '）';
+        try { const errData = await res.json(); if (errData && errData.error) msg = errData.error; } catch (e) {}
+        showToast(msg);
+        return;
+      }
       const data = await res.json();
       history = Array.isArray(data.items) ? data.items : history;
       renderHistory();
       showToast('坐标已保存到 ' + t);
     } catch (err) {
-      showToast('保存失败，请检查 Worker 地址');
+      showToast('保存失败：网络错误或跨域被拦截，请检查站点地址是否正确（' + (err && err.message ? err.message : err) + '）');
     }
   });
 
@@ -535,7 +547,7 @@ input,select{font:inherit;color:inherit}
   document.getElementById('genModule').addEventListener('click', () => {
     const base = document.getElementById('base').value.trim().replace(/\/$/, '');
     const token = document.getElementById('token').value.trim();
-    if (!base || !token) { showToast('请先填写 Worker 地址和 Token'); return; }
+    if (!base || !token) { showToast('请先填写 站点地址和 Token'); return; }
     moduleUrlEl.textContent = base + '/api/module/' + activeClient + '/' + token;
   });
   document.getElementById('copyUrl').addEventListener('click', async () => {

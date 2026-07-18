@@ -85,13 +85,26 @@ function buildRelayResponseHeaders(upstream, spoofed) {
   return headers
 }
 
+function requireKv(env) {
+  if (!env.LOCATIONS) {
+    return jsonResponse({
+      error: 'LOCATIONS KV binding not configured. Go to the Cloudflare Pages project Settings -> Bindings and add a KV namespace binding named LOCATIONS, then redeploy.'
+    }, 500)
+  }
+  return null
+}
+
 async function handleGetLocation(env, token) {
+  const kvErr = requireKv(env)
+  if (kvErr) return kvErr
   const raw = await env.LOCATIONS.get(`loc:${token}`, 'json')
   if (!raw) return jsonResponse({ error: 'location not found' }, 404)
   return jsonResponse(raw)
 }
 
 async function handlePostLocation(env, token, request) {
+  const kvErr = requireKv(env)
+  if (kvErr) return kvErr
   const auth = checkWriteAuth(env, token, request)
   if (auth) return auth
   const body = await request.json()
@@ -104,11 +117,15 @@ async function handlePostLocation(env, token, request) {
 }
 
 async function handleGetHistory(env, token) {
+  const kvErr = requireKv(env)
+  if (kvErr) return kvErr
   const raw = await env.LOCATIONS.get(`history:${token}`, 'json')
   return jsonResponse({ items: raw ?? [] })
 }
 
 async function handlePostHistory(env, token, request) {
+  const kvErr = requireKv(env)
+  if (kvErr) return kvErr
   const auth = checkWriteAuth(env, token, request)
   if (auth) return auth
   const body = await request.json()
@@ -130,6 +147,8 @@ async function handlePostHistory(env, token, request) {
 }
 
 async function handleDeleteHistory(env, token, index, request) {
+  const kvErr = requireKv(env)
+  if (kvErr) return kvErr
   const auth = checkWriteAuth(env, token, request)
   if (auth) return auth
   const raw = await env.LOCATIONS.get(`history:${token}`, 'json')
@@ -188,6 +207,8 @@ ios-pin = type=http-response,pattern=^https:\\/\\/gs-loc(-cn)?\\.apple\\.com\\/c
 }
 
 async function relayAppleWloc(env, token, request) {
+  const kvErr = requireKv(env)
+  if (kvErr) return kvErr
   const loc = await env.LOCATIONS.get(`loc:${token}`, 'json')
   if (!loc) return jsonResponse({ error: 'location not found' }, 404)
 
@@ -252,6 +273,15 @@ relay().catch(err => $done({ status: 502, body: String(err && err.message ? err.
 
 export default {
   async fetch(request, env, ctx) {
+    try {
+      return await handleRequest(request, env)
+    } catch (err) {
+      return jsonResponse({ error: 'internal error', message: String(err && err.message ? err.message : err) }, 500)
+    }
+  }
+}
+
+async function handleRequest(request, env) {
     const url = new URL(request.url)
     const pathname = url.pathname
     const siteBase = url.origin
@@ -288,5 +318,4 @@ export default {
     }
 
     return env.ASSETS.fetch(request)
-  }
 }
