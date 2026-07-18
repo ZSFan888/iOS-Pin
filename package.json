@@ -4,5 +4,9 @@
   "workspaces": [
     "Worker",
     "Frontend"
-  ]
+  ],
+  "scripts": {
+    "deploy": "npm --prefix Worker run deploy",
+    "dev": "npm --prefix Worker run dev"
+  }
 }

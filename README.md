@@ -30,12 +30,15 @@ npm run dev
 
 直接打开 `Frontend/Public/Console.html` 进行静态预览，或用任意静态服务器托管。
 
-## 部署要点
+## 部署要点（一次部署，前后端都上线）
 
-1. 创建 KV 命名空间并绑定为 `LOCATIONS`。
-2. 在 `Worker/wrangler.jsonc` 中更新 Worker 名称与 KV ID。
-3. 使用 Wrangler 部署。
-4. 把生成的 Worker 地址填入客户端代理模块中。
+- `Worker/wrangler.jsonc` 现在通过 `assets.directory` 指向 `Frontend/Public`，Wrangler 会把前端静态文件和 Worker 代码打包在同一次部署里。
+- 执行一次 `wrangler deploy`（或仓库根目录下的 `npm run deploy`）即可同时发布：
+  - 静态前端控制台（`Frontend/Public/Console.html`），可直接通过 Worker 地址根路径访问；
+  - 后端 API 与中继路由（`/api/*`、`/relay/*`、`/script/*.js`）。
+- 不再需要单独部署 Cloudflare Pages——一个 Worker 地址就同时是前端页面地址和后端 API 地址。
+- 前端页面首次打开时会自动把"Worker 地址"输入框填充为当前页面的 origin（因为前后端现在同源），减少手动复制粘贴的步骤。
+- 详细步骤（创建 KV、设置密钥、首次部署命令）请参见 [`DEPLOY.md`](./DEPLOY.md)。
 
 ## 使用 PAT 推送到 GitHub
 

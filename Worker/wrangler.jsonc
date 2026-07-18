@@ -3,6 +3,16 @@
   "name": "ios-pin",
   "main": "Src/Index.ts",
   "compatibility_date": "2026-07-18",
+  // Serves the static frontend (Frontend/Public/Console.html) from the SAME
+  // Worker deployment. Any request that matches a file in this directory is
+  // served directly as a static asset; everything else (e.g. /api/*,
+  // /relay/*, /script/*.js) falls through to the Worker code in Src/Index.ts.
+  // This means ONE `wrangler deploy` publishes both frontend and backend.
+  "assets": {
+    "directory": "../Frontend/Public",
+    "binding": "ASSETS",
+    "not_found_handling": "404-page"
+  },
   // Create with: wrangler kv namespace create ios-pin-locations
   // Then replace the id below with the returned namespace id.
   "kv_namespaces": [
@@ -15,6 +25,11 @@
   "env": {
     "production": {
       "name": "ios-pin-production",
+      "assets": {
+        "directory": "../Frontend/Public",
+        "binding": "ASSETS",
+        "not_found_handling": "404-page"
+      },
       "kv_namespaces": [
         {
           "binding": "LOCATIONS",

@@ -59,7 +59,9 @@ npm run dev
 
 Wrangler 会打印一个本地地址（通常是 `http://localhost:8787`）。测试时把这个地址填入 `Frontend/Public/Console.html` 里的"Worker 地址"字段即可。
 
-## 7. 部署到生产环境
+## 7. 一次部署，前后端都上线
+
+`Worker/wrangler.jsonc` 里的 `assets.directory` 指向 `../Frontend/Public`，所以 **一次 `wrangler deploy` 会同时发布前端页面和后端 API**，不需要再单独部署 Cloudflare Pages。
 
 ```bash
 npm run deploy
@@ -67,15 +69,19 @@ npm run deploy
 npx wrangler deploy --env production
 ```
 
-Wrangler 会打印出你线上的 Worker 地址，例如 `https://ios-pin.<你的子域名>.workers.dev`。
+Wrangler 会打印出你线上的 Worker 地址，例如 `https://ios-pin.<你的子域名>.workers.dev`。这个地址现在同时是：
 
-## 8. 让前端连接到你的 Worker
+- 前端控制台地址：直接访问该地址即可打开 `Console.html`
+- 后端 API 地址：`/api/*`、`/relay/*`、`/script/*.js` 等路由都在同一个域名下
 
-打开 `Frontend/Public/Console.html`（也可以把它托管到 Cloudflare Pages 上），填入：
+## 8. 打开前端控制台
 
-- Worker 地址：你部署好的 Worker 地址
+直接在浏览器里访问第 7 步打印出的 Worker 地址即可看到控制台页面（因为前端已经和 Worker 一起部署了）。页面打开时会自动把"Worker 地址"输入框填充为当前页面地址，你只需要填写：
+
 - 设备 Token：任意你自定义的标识，例如 `iphone-main`
 - API Key：只有在第 5 步设置了 `API_KEY` 时才需要填写
+
+如果你想在本地单独预览前端样式（不连接真实 Worker），仍然可以直接双击打开 `Frontend/Public/Console.html`，或用任意静态服务器托管它，再手动填入其他环境的 Worker 地址。
 
 ## 9. 生成并安装代理模块
 
@@ -98,7 +104,7 @@ node Scripts/Inspect-capture.mjs Test/Fixtures/sample-01.bin
 
 ## 通过 Cloudflare 网站控制台部署（不使用命令行）
 
-如果你不想用 Wrangler CLI，也可以完全在浏览器里通过 Cloudflare 官网控制台完成部署。整体分两部分：Worker（后端 API）和 Frontend（前端页面）。
+如果你不想用 Wrangler CLI，也可以完全在浏览器里通过 Cloudflare 官网控制台完成部署。由于前端资源已经打包进 Worker 部署（见第 7 步），这里只需要部署一次 Worker，不需要再单独部署 Cloudflare Pages。
 
 ### 一、部署 Worker（后端）
 
@@ -129,17 +135,10 @@ node Scripts/Inspect-capture.mjs Test/Fixtures/sample-01.bin
    - 变量名称填 `LOCATIONS`
    - 选择或新建一个 KV 命名空间（如果还没有，可以在 **存储和数据库 → KV** 页面先创建一个，例如命名为 `ios-pin-locations`）
 
-### 三、部署 Frontend（前端页面）到 Cloudflare Pages
+### 三、（已不再需要）单独部署 Frontend 到 Cloudflare Pages
 
-1. 在 Cloudflare 控制台进入 **Workers 和 Pages** → **创建应用程序** → 切换到 **Pages** 标签。
-2. 选择 **连接到 Git**，同样选择仓库 `ZSFan888/iOS-Pin`。
-3. 在构建配置中填写：
-   - **构建命令**：留空（这是纯静态 HTML，不需要构建步骤）
-   - **构建输出目录**：`Frontend/Public`
-4. 点击 **保存并部署**。
-5. 部署完成后，Cloudflare 会给你一个形如 `https://ios-pin.pages.dev` 的地址，访问该地址下的 `Console.html`（即 `https://ios-pin.pages.dev/Console.html`）就能打开控制台页面。
-6. 打开页面后，把第二步部署好的 Worker 地址填入"Worker 地址"字段即可开始使用。
+以前的版本需要把 `Frontend/Public` 单独部署到 Cloudflare Pages。**现在不需要这一步了**——第二步部署 Worker 时，`wrangler.jsonc` 的 `assets.directory` 已经把 `Frontend/Public` 一起打包上传，访问 Worker 地址本身即可看到控制台页面。如果你依然想保留一个独立的 Pages 站点（例如挂到自定义域名），仍然可以按旧流程单独部署，两者不冲突。
 
 ### 四、后续更新方式
 
-采用"连接 GitHub 仓库"的方式后，你不需要再手动操作 Cloudflare 控制台——只要执行 `git push` 把新代码推送到 `main` 分支，Cloudflare 会自动检测改动并重新构建部署 Worker 和 Pages。
+采用"连接 GitHub 仓库"的方式后，你不需要再手动操作 Cloudflare 控制台——只要执行 `git push` 把新代码推送到 `main` 分支，Cloudflare 会自动检测改动并重新构建部署 Worker（前端和后端在同一次部署里一起更新）。

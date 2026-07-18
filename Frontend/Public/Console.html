@@ -413,6 +413,13 @@ input,select{font:inherit;color:inherit}
   const baseEl = document.getElementById('base');
   const tokenEl = document.getElementById('token');
 
+  // If the console is served from the same Worker (single-deploy setup),
+  // default the Worker address field to the current origin so the user
+  // doesn't have to manually copy/paste it.
+  if (!baseEl.value.trim() && window.location.origin.startsWith('http')) {
+    baseEl.value = window.location.origin;
+  }
+
   function currentBase(){ return baseEl.value.trim().replace(/\/$/, ''); }
   function currentToken(){ return tokenEl.value.trim(); }
 
