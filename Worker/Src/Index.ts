@@ -10,6 +10,8 @@ type Bindings = {
 type HistoryEntry = { label: string; lat: number; lng: number; savedAt: string }
 type StoredLocation = { lat: number; lng: number; updatedAt?: string }
 
+const VERSION = '2026.07.19'
+
 const APPLE_NETWORK_LOCATION_PATH = '/clls/wloc'
 const APPLE_HOST_DEFAULT = 'gs-loc.apple.com'
 const APPLE_HOST_CN = 'gs-loc-cn.apple.com'
@@ -24,6 +26,43 @@ const RESPONSE_HEADERS_TO_FORWARD = [
 ]
 
 const app = new Hono<{ Bindings: Bindings }>()
+
+
+function noStoreHeaders(extra?: Record<string, string>) {
+  const headers = new Headers({
+    'content-type': 'application/json; charset=utf-8',
+    'cache-control': 'no-store, no-cache, must-revalidate, max-age=0',
+    'pragma': 'no-cache',
+    'expires': '0'
+  })
+  if (extra) {
+    for (const [k, v] of Object.entries(extra)) headers.set(k, v)
+  }
+  return headers
+}
+
+function textNoStoreResponse(body: string, contentType = 'text/plain; charset=utf-8') {
+  return new Response(body, {
+    headers: {
+      'content-type': contentType,
+      'cache-control': 'no-store, no-cache, must-revalidate, max-age=0',
+      'pragma': 'no-cache',
+      'expires': '0'
+    }
+  })
+}
+
+function normalizeToken(token: string) {
+  return token.trim()
+}
+
+function isValidToken(token: string) {
+  return /^[a-zA-Z0-9_-]{1,64}$/.test(token)
+}
+
+function areValidCoordinates(lat: number, lng: number) {
+  return Number.isFinite(lat) && Number.isFinite(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180
+}
 
 function isTokenAllowed(env: Bindings, token: string) {
   if (!env.ALLOWED_TOKENS) return true
@@ -79,7 +118,7 @@ function buildRelayResponseHeaders(upstream: Response, spoofed: boolean) {
 
 async function requireWriteAuth(c: any, next: () => Promise<void>) {
   const env = c.env as Bindings
-  const token = c.req.param('token')
+  const token = normalizeToken(c.req.param('token'))
   if (token && !isTokenAllowed(env, token)) {
     return c.json({ error: 'token not allowed' }, 403)
   }
@@ -92,11 +131,14 @@ async function requireWriteAuth(c: any, next: () => Promise<void>) {
   await next()
 }
 
-app.get('/', (c) => c.json({
+app.get('/', (c) => new Response(JSON.stringify({
   name: 'ios-pin',
   status: 'ok',
-  endpoints: ['/api/location/:token', '/api/module/:client/:token', '/relay/apple/:token/clls/wloc']
-}))
+  version: VERSION,
+  endpoints: ['/api/location/:token', '/api/module/:client/:token', '/relay/apple/:token/clls/wloc', '/healthz']
+}), { headers: noStoreHeaders() }))
+
+app.get('/healthz', (c) => new Response(JSON.stringify({ ok: true, version: VERSION }), { headers: noStoreHeaders() }))
 
 app.get('/api/location/:token', async (c) => {
   const token = c.req.param('token')
@@ -106,27 +148,30 @@ app.get('/api/location/:token', async (c) => {
 })
 
 app.post('/api/location/:token', requireWriteAuth, async (c) => {
-  const token = c.req.param('token')
+  const token = normalizeToken(c.req.param('token'))
+  if (!isValidToken(token)) return new Response(JSON.stringify({ error: 'invalid token' }), { status: 400, headers: noStoreHeaders() })
   const body = await c.req.json<{ lat: number; lng: number }>()
-  if (!Number.isFinite(body.lat) || !Number.isFinite(body.lng)) {
-    return c.json({ error: 'invalid coordinates' }, 400)
+  if (!areValidCoordinates(body.lat, body.lng)) {
+    return new Response(JSON.stringify({ error: 'invalid coordinates' }), { status: 400, headers: noStoreHeaders() })
   }
   const payload = { lat: body.lat, lng: body.lng, updatedAt: new Date().toISOString() }
   await c.env.LOCATIONS.put(`loc:${token}`, JSON.stringify(payload))
-  return c.json({ ok: true, token, ...payload })
+  return new Response(JSON.stringify({ ok: true, token, ...payload }), { headers: noStoreHeaders() })
 })
 
 app.get('/api/history/:token', async (c) => {
-  const token = c.req.param('token')
+  const token = normalizeToken(c.req.param('token'))
+  if (!isValidToken(token)) return new Response(JSON.stringify({ error: 'invalid token' }), { status: 400, headers: noStoreHeaders() })
   const raw = await c.env.LOCATIONS.get(`history:${token}`, 'json') as HistoryEntry[] | null
-  return c.json({ items: raw ?? [] })
+  return new Response(JSON.stringify({ items: raw ?? [] }), { headers: noStoreHeaders() })
 })
 
 app.post('/api/history/:token', requireWriteAuth, async (c) => {
-  const token = c.req.param('token')
+  const token = normalizeToken(c.req.param('token'))
+  if (!isValidToken(token)) return new Response(JSON.stringify({ error: 'invalid token' }), { status: 400, headers: noStoreHeaders() })
   const body = await c.req.json<{ label?: string; lat: number; lng: number }>()
-  if (!Number.isFinite(body.lat) || !Number.isFinite(body.lng)) {
-    return c.json({ error: 'invalid coordinates' }, 400)
+  if (!areValidCoordinates(body.lat, body.lng)) {
+    return new Response(JSON.stringify({ error: 'invalid coordinates' }), { status: 400, headers: noStoreHeaders() })
   }
   const raw = await c.env.LOCATIONS.get(`history:${token}`, 'json') as HistoryEntry[] | null
   const items = raw ?? []
@@ -139,22 +184,25 @@ app.post('/api/history/:token', requireWriteAuth, async (c) => {
   const deduped = items.filter(i => !(Math.abs(i.lat - entry.lat) < 1e-6 && Math.abs(i.lng - entry.lng) < 1e-6))
   const next = [entry, ...deduped].slice(0, 20)
   await c.env.LOCATIONS.put(`history:${token}`, JSON.stringify(next))
-  return c.json({ ok: true, items: next })
+  return new Response(JSON.stringify({ ok: true, items: next }), { headers: noStoreHeaders() })
 })
 
 app.delete('/api/history/:token/:index', requireWriteAuth, async (c) => {
-  const token = c.req.param('token')
+  const token = normalizeToken(c.req.param('token'))
+  if (!isValidToken(token)) return new Response(JSON.stringify({ error: 'invalid token' }), { status: 400, headers: noStoreHeaders() })
   const index = Number(c.req.param('index'))
   const raw = await c.env.LOCATIONS.get(`history:${token}`, 'json') as HistoryEntry[] | null
   const items = raw ?? []
   if (index < 0 || index >= items.length) return c.json({ error: 'index out of range' }, 400)
   items.splice(index, 1)
   await c.env.LOCATIONS.put(`history:${token}`, JSON.stringify(items))
-  return c.json({ ok: true, items })
+  return new Response(JSON.stringify({ ok: true, items }), { headers: noStoreHeaders() })
 })
 
 app.get('/api/module/:client/:token', async (c) => {
-  const { client, token } = c.req.param()
+  const { client } = c.req.param()
+  const token = normalizeToken(c.req.param('token'))
+  if (!isValidToken(token)) return textNoStoreResponse('invalid token')
   const workerBase = new URL(c.req.url).origin
   const relayUrl = `${workerBase}/script/${token}.js`
   const templates: Record<string, string> = {
@@ -198,12 +246,13 @@ ios-pin = type=http-response,pattern=^https:\/\/gs-loc(-cn)?\.apple\.com\/clls\/
 `
   }
   const content = templates[client]
-  if (!content) return c.text('unsupported client', 404)
-  return new Response(content, { headers: { 'content-type': 'text/plain; charset=utf-8' } })
+  if (!content) return new Response('unsupported client', { status: 404, headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store, no-cache, must-revalidate, max-age=0' } })
+  return textNoStoreResponse(content)
 })
 
 async function relayAppleNetworkLocation(c: any) {
-  const token = c.req.param('token')
+  const token = normalizeToken(c.req.param('token'))
+  if (!isValidToken(token)) return new Response(JSON.stringify({ error: 'invalid token' }), { status: 400, headers: noStoreHeaders() })
   const loc = await c.env.LOCATIONS.get(`loc:${token}`, 'json') as StoredLocation | null
   if (!loc) return c.json({ error: 'location not found' }, 404)
 
@@ -234,7 +283,8 @@ app.post('/apple/clls/wloc/:token', relayAppleNetworkLocation)
 app.post('/relay/apple/:token/clls/wloc', relayAppleNetworkLocation)
 
 app.get('/script/:token.js', (c) => {
-  const token = c.req.param('token')
+  const token = normalizeToken(c.req.param('token'))
+  if (!isValidToken(token)) return new Response('// invalid token', { status: 400, headers: { 'content-type': 'application/javascript; charset=utf-8', 'cache-control': 'no-store, no-cache, must-revalidate, max-age=0' } })
   const workerBase = new URL(c.req.url).origin
   const js = `const token = ${JSON.stringify(token)};
 const base = ${JSON.stringify(workerBase)};
@@ -268,7 +318,7 @@ async function relay() {
 }
 relay().catch(err => $done({ status: 502, body: String(err && err.message ? err.message : err) }));
 `
-  return new Response(js, { headers: { 'content-type': 'application/javascript; charset=utf-8' } })
+  return new Response(js, { headers: { 'content-type': 'application/javascript; charset=utf-8', 'cache-control': 'no-store, no-cache, must-revalidate, max-age=0' } })
 })
 
 export default app
