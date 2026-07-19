@@ -3,6 +3,7 @@ import { decimalToMicro, spoofAppleIosPinResponse } from './Proto/Apple-ios-pin'
 
 type Bindings = {
   LOCATIONS: KVNamespace
+  ASSETS: Fetcher
   API_KEY?: string
   ALLOWED_TOKENS?: string
 }
@@ -322,3 +323,27 @@ relay().catch(err => $done({ status: 502, body: String(err && err.message ? err.
 })
 
 export default app
+
+
+async function serveAssetFallback(request: Request, env: Bindings, executionCtx?: ExecutionContext) {
+  const url = new URL(request.url)
+  const assetRequest = new Request(new URL(url.pathname === '/' ? '/index.html' : url.pathname, url.origin).toString(), request)
+  const response = await env.ASSETS.fetch(assetRequest)
+  if (response.status !== 404) return response
+  if (!url.pathname.includes('.') && request.method === 'GET') {
+    return env.ASSETS.fetch(new Request(new URL('/index.html', url.origin).toString(), request))
+  }
+  return response
+}
+
+export default {
+  async fetch(request: Request, env: Bindings, executionCtx: ExecutionContext) {
+    const url = new URL(request.url)
+    const dynamicPrefixes = ['/', '/healthz', '/api/', '/relay/', '/script/']
+    const isDynamic = url.pathname === '/' || url.pathname === '/healthz' || dynamicPrefixes.some(prefix => prefix !== '/' && url.pathname.startsWith(prefix))
+    if (isDynamic) {
+      return app.fetch(request, env, executionCtx)
+    }
+    return serveAssetFallback(request, env, executionCtx)
+  }
+}
