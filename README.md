@@ -164,7 +164,7 @@ Cloudflare Pages 支持两种管理绑定（KV、环境变量等）的方式：*
 默认情况下，任何知道你 Pages 地址和 Token 的人都可以读写对应设备的坐标，适合个人使用，但公开分享前建议开启保护：
 
 1. 在 Cloudflare Pages 项目的 **Settings → Environment variables** 里添加：
-   - `API_KEY`：要求所有写请求都携带该密钥（放在 `x-wloc-key` 请求头中），类型建议选择 **Secret**
+   - `API_KEY`：要求所有写请求都携带该密钥（放在 `x-ios-pin-key` 请求头中），类型建议选择 **Secret**
    - `ALLOWED_TOKENS`：允许使用的设备 Token 白名单，用逗号分隔，类型同样建议选择 **Secret**
 2. 保存后重新触发一次部署让变量生效。
 3. 前端"API Key"输入框填入相同密钥即可正常使用。

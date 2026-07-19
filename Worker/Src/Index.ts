@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { decimalToMicro, spoofAppleWlocResponse } from './Proto/Apple-ios-pin'
+import { decimalToMicro, spoofAppleIosPinResponse } from './Proto/Apple-ios-pin'
 
 type Bindings = {
   LOCATIONS: KVNamespace
@@ -10,7 +10,7 @@ type Bindings = {
 type HistoryEntry = { label: string; lat: number; lng: number; savedAt: string }
 type StoredLocation = { lat: number; lng: number; updatedAt?: string }
 
-const APPLE_WLOC_PATH = '/clls/wloc'
+const APPLE_NETWORK_LOCATION_PATH = '/clls/wloc'
 const APPLE_HOST_DEFAULT = 'gs-loc.apple.com'
 const APPLE_HOST_CN = 'gs-loc-cn.apple.com'
 const RESPONSE_HEADERS_TO_FORWARD = [
@@ -40,7 +40,7 @@ function normalizeAppleHost(input?: string | null) {
 }
 
 function buildAppleUpstreamUrl(requestedHost?: string | null) {
-  return `https://${normalizeAppleHost(requestedHost)}${APPLE_WLOC_PATH}`
+  return `https://${normalizeAppleHost(requestedHost)}${APPLE_NETWORK_LOCATION_PATH}`
 }
 
 function copyUpstreamRequestHeaders(source: Headers) {
@@ -54,8 +54,8 @@ function copyUpstreamRequestHeaders(source: Headers) {
       lowered === 'x-forwarded-for' ||
       lowered === 'x-forwarded-proto' ||
       lowered === 'x-real-ip' ||
-      lowered === 'x-wloc-upstream-host' ||
-      lowered === 'x-wloc-original-url'
+      lowered === 'x-ios-pin-upstream-host' ||
+      lowered === 'x-ios-pin-original-url'
     ) {
       continue
     }
@@ -84,7 +84,7 @@ async function requireWriteAuth(c: any, next: () => Promise<void>) {
     return c.json({ error: 'token not allowed' }, 403)
   }
   if (env.API_KEY) {
-    const provided = c.req.header('x-wloc-key')
+    const provided = c.req.header('x-ios-pin-key')
     if (provided !== env.API_KEY) {
       return c.json({ error: 'unauthorized' }, 401)
     }
@@ -202,12 +202,12 @@ ios-pin = type=http-response,pattern=^https:\/\/gs-loc(-cn)?\.apple\.com\/clls\/
   return new Response(content, { headers: { 'content-type': 'text/plain; charset=utf-8' } })
 })
 
-async function relayAppleWloc(c: any) {
+async function relayAppleNetworkLocation(c: any) {
   const token = c.req.param('token')
   const loc = await c.env.LOCATIONS.get(`loc:${token}`, 'json') as StoredLocation | null
   if (!loc) return c.json({ error: 'location not found' }, 404)
 
-  const upstreamUrl = buildAppleUpstreamUrl(c.req.header('x-wloc-upstream-host') || c.req.header('x-wloc-original-url'))
+  const upstreamUrl = buildAppleUpstreamUrl(c.req.header('x-ios-pin-upstream-host') || c.req.header('x-ios-pin-original-url'))
   const upstream = await fetch(upstreamUrl, {
     method: 'POST',
     headers: copyUpstreamRequestHeaders(c.req.raw.headers),
@@ -217,7 +217,7 @@ async function relayAppleWloc(c: any) {
   const upstreamBytes = new Uint8Array(await upstream.arrayBuffer())
   const shouldSpoof = upstream.ok && upstreamBytes.length > 10
   const finalBytes = shouldSpoof
-    ? spoofAppleWlocResponse(upstreamBytes, {
+    ? spoofAppleIosPinResponse(upstreamBytes, {
         latMicro: decimalToMicro(loc.lat),
         lngMicro: decimalToMicro(loc.lng)
       })
@@ -230,8 +230,8 @@ async function relayAppleWloc(c: any) {
   })
 }
 
-app.post('/apple/clls/wloc/:token', relayAppleWloc)
-app.post('/relay/apple/:token/clls/wloc', relayAppleWloc)
+app.post('/apple/clls/wloc/:token', relayAppleNetworkLocation)
+app.post('/relay/apple/:token/clls/wloc', relayAppleNetworkLocation)
 
 app.get('/script/:token.js', (c) => {
   const token = c.req.param('token')
@@ -256,8 +256,8 @@ async function relay() {
     headers: {
       'content-type': readHeader('Content-Type') || 'application/x-www-form-urlencoded',
       'user-agent': readHeader('User-Agent') || 'locationd/1.0',
-      'x-wloc-upstream-host': originalHost(),
-      'x-wloc-original-url': $request.url
+      'x-ios-pin-upstream-host': originalHost(),
+      'x-ios-pin-original-url': $request.url
     },
     ...payload()
   };

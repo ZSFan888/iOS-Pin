@@ -172,7 +172,7 @@ function replaceAccessPointEntry(entry: Uint8Array, latMicro: bigint, lngMicro: 
  * using multiple entries; leaving real coordinates on other entries would
  * pull the computed fix back toward the true location.
  */
-export function spoofAppleWlocResponse(body: Uint8Array, coord: Coord) {
+export function spoofAppleIosPinResponse(body: Uint8Array, coord: Coord) {
   if (body.length <= 10) return body
   const prefix = body.slice(0, 10)
   const message = body.slice(10)

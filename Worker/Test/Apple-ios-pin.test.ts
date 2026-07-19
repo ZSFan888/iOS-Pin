@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import {
-  spoofAppleWlocResponse,
+  spoofAppleIosPinResponse,
   decimalToMicro,
   microToDecimal,
   encodeVarint,
@@ -136,25 +136,25 @@ function extractEntriesFromSpoofedMessage(body: Uint8Array): Array<{ bssid: stri
   return results
 }
 
-describe('spoofAppleWlocResponse', () => {
+describe('spoofAppleIosPinResponse', () => {
   it('replaces latitude and longitude fields inside the nested Coordinate submessage', () => {
     const original = buildFakeWlocResponse(decimalToMicro(35.0), decimalToMicro(139.0))
     const targetLat = decimalToMicro(48.8566)
     const targetLng = decimalToMicro(2.3522)
-    const spoofed = spoofAppleWlocResponse(original, { latMicro: targetLat, lngMicro: targetLng })
+    const spoofed = spoofAppleIosPinResponse(original, { latMicro: targetLat, lngMicro: targetLng })
     expect(spoofed.length).toBeGreaterThan(0)
     expect(spoofed).not.toEqual(original)
   })
 
   it('returns the body unchanged if it is too short to contain a valid message', () => {
     const tiny = new Uint8Array([1, 2, 3])
-    const result = spoofAppleWlocResponse(tiny, { latMicro: 0n, lngMicro: 0n })
+    const result = spoofAppleIosPinResponse(tiny, { latMicro: 0n, lngMicro: 0n })
     expect(result).toEqual(tiny)
   })
 
   it('preserves the BSSID field while rewriting only the coordinate', () => {
     const original = buildFakeWlocResponse(decimalToMicro(35.0), decimalToMicro(139.0), '64:d8:14:72:60:c')
-    const spoofed = spoofAppleWlocResponse(original, {
+    const spoofed = spoofAppleIosPinResponse(original, {
       latMicro: decimalToMicro(48.8566),
       lngMicro: decimalToMicro(2.3522)
     })
@@ -170,7 +170,7 @@ describe('spoofAppleWlocResponse', () => {
     ])
     const targetLat = decimalToMicro(48.8566)
     const targetLng = decimalToMicro(2.3522)
-    const spoofed = spoofAppleWlocResponse(original, { latMicro: targetLat, lngMicro: targetLng })
+    const spoofed = spoofAppleIosPinResponse(original, { latMicro: targetLat, lngMicro: targetLng })
     const entries = extractEntriesFromSpoofedMessage(spoofed)
     expect(entries).toHaveLength(3)
     for (const entry of entries) {
@@ -184,7 +184,7 @@ describe('spoofAppleWlocResponse', () => {
     const original = buildFakeWlocResponse(decimalToMicro(35.0), decimalToMicro(139.0))
     const targetLat = decimalToMicro(-33.8688)
     const targetLng = decimalToMicro(-70.6693)
-    const spoofed = spoofAppleWlocResponse(original, { latMicro: targetLat, lngMicro: targetLng })
+    const spoofed = spoofAppleIosPinResponse(original, { latMicro: targetLat, lngMicro: targetLng })
     const [entry] = extractEntriesFromSpoofedMessage(spoofed)
     expect(entry.lat).toBe(targetLat)
     expect(entry.lng).toBe(targetLng)
@@ -194,7 +194,7 @@ describe('spoofAppleWlocResponse', () => {
     const original = buildFakeWlocResponse(decimalToMicro(0), decimalToMicro(0))
     const targetLat = decimalToMicro(48.8566)
     const targetLng = decimalToMicro(2.3522)
-    const spoofed = spoofAppleWlocResponse(original, { latMicro: targetLat, lngMicro: targetLng })
+    const spoofed = spoofAppleIosPinResponse(original, { latMicro: targetLat, lngMicro: targetLng })
     const [entry] = extractEntriesFromSpoofedMessage(spoofed)
     expect(entry.lat).toBe(targetLat)
     expect(entry.lng).toBe(targetLng)
@@ -251,7 +251,7 @@ describe('capture fixture regression', () => {
     const original = new Uint8Array(readFileSync(fixturePath))
     const targetLat = decimalToMicro(48.8566)
     const targetLng = decimalToMicro(2.3522)
-    const spoofed = spoofAppleWlocResponse(original, { latMicro: targetLat, lngMicro: targetLng })
+    const spoofed = spoofAppleIosPinResponse(original, { latMicro: targetLat, lngMicro: targetLng })
     expect(spoofed.length).toBeGreaterThan(0)
     const entries = extractEntriesFromSpoofedMessage(spoofed)
     expect(entries.length).toBeGreaterThan(0)

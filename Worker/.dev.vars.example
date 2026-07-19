@@ -5,6 +5,6 @@
 # Leave empty to allow any token during local development.
 ALLOWED_TOKENS=
 
-# Optional: shared secret required in the `x-wloc-key` header for write endpoints.
+# Optional: shared secret required in the `x-ios-pin-key` header for write endpoints.
 # Leave empty to disable auth during local development.
 API_KEY=
