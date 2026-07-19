@@ -1,112 +1,129 @@
 # 部署指南
 
-本项目只使用 **Cloudflare Pages** 部署：前端静态文件放在 `Frontend/Public`，后端逻辑通过同目录下的 `_worker.js` 以 Pages Functions Advanced Mode 运行，因此前后端共用同一个 `*.pages.dev` 域名。整个流程从头到尾都在浏览器里通过 Cloudflare 控制台完成，不需要安装任何命令行工具。
+本文档对应 **iOS Pin 最新版**，内容已经更新为当前仓库的实际架构、最新脚本命名和最新部署方式。
 
-## 1. 前置条件
+## 部署模式
 
-- 一个 Cloudflare 账号（免费版即可）
-- 一个 GitHub 仓库，代码已经推送到 GitHub
+本项目使用 **Cloudflare Pages** 部署，前端与后端共用同一个 `*.pages.dev` 域名：
 
-## 2. 项目结构说明
+- `Frontend/Public/index.html`：网页控制台
+- `Frontend/Public/_worker.js`：Pages Functions Advanced Mode 入口
+- `Frontend/Public` 下输出客户端脚本与模块配置
 
-- `Frontend/Public/index.html`：前端地图控制台页面
-- `Frontend/Public/_worker.js`：Pages Functions Advanced Mode 入口，包含坐标存取 API、Apple iOS Pin 中继逻辑、代理模块生成逻辑。这个文件是**零第三方依赖的纯 JavaScript**，因为 Cloudflare Pages 在未设置 Build command 时不会执行 `npm install`，也不会做 TypeScript 类型剥离
-- `Frontend/Public/apple-ios-pin.js`：protobuf 坐标改写逻辑的纯 JS 版本，被 `_worker.js` 用相对路径 `import` 引用（必须放在 `Frontend/Public` 目录内，Pages 不会打包目录外的文件）
-- `Worker/Src/Proto/Apple-ios-pin.ts`：同一套逻辑的 TypeScript 版本，只用于本地 Vitest 测试和类型检查，不参与线上部署
-- `Worker/Test/`：针对 protobuf 改写逻辑的 Vitest 测试
+当前版本不依赖根目录 `wrangler.toml`，目的是保留 Cloudflare 网页控制台里的可视化绑定入口。
 
-> 本项目**不在仓库根目录放置** `wrangler.toml` 或 `wrangler.jsonc` 配置文件，这是有意为之：Cloudflare Pages 一旦在根目录检测到这类配置文件，就会认为绑定（KV、环境变量等）应该由配置文件统一管理，从而**关闭网页控制台里手动添加绑定的入口**，页面会提示类似"此项目的绑定在通过 wrangler.toml 进行管理"。为了让你能完全通过网页操作完成部署和配置，本项目选择不使用根目录配置文件，所有绑定都在下面第 4 步的网页界面里手动添加。
+## 一、前置条件
 
-## 3. 创建 Pages 项目并连接 GitHub
+请先准备：
 
-1. 登录 [Cloudflare 控制台](https://dash.cloudflare.com)。
-2. 左侧菜单进入 **Workers & Pages**。
-3. 点击 **Create application** → 选择 **Pages** 标签页 → **Connect to Git**。
-4. 授权 Cloudflare 访问你的 GitHub 账号，选择这个仓库。
-5. 在构建配置页填写：
-   - **Project name**：任意，例如 `ios-pin`
-   - **Production branch**：`main`
-   - **Framework preset**：None
-   - **Build command**：留空
-   - **Build output directory**：`Frontend/Public`
-6. 点击 **Save and Deploy**，Cloudflare 会拉取仓库代码并完成第一次部署。
+- Cloudflare 账号
+- GitHub 仓库
+- 一台可运行 MITM 代理客户端的 iOS 设备
+- 已安装并信任代理客户端根证书
 
-部署完成后会得到一个形如 `https://ios-pin.pages.dev` 的地址，先记下它，接下来还需要两步配置才能正常使用。
+## 二、创建 Pages 项目
 
-## 4. 添加 KV 命名空间绑定
+1. 登录 Cloudflare 控制台。
+2. 打开 **Workers & Pages**。
+3. 点击 **Create application**。
+4. 选择 **Pages**，再选择 **Connect to Git**。
+5. 连接当前 GitHub 仓库。
+6. 构建设置填写：
+   - `Project name`：例如 `ios-pin`
+   - `Production branch`：`main`
+   - `Framework preset`：`None`
+   - `Build command`：留空
+   - `Build output directory`：`Frontend/Public`
+7. 点击 **Save and Deploy**。
 
-坐标和历史记录都存储在 Cloudflare KV 里，Pages Functions 需要绑定这个 KV 命名空间才能读写。整个过程完全在网页上完成，不需要命令行：
+## 三、添加 KV 绑定
 
-1. 在刚创建的 Pages 项目里，点击顶部 **Settings** 标签。
-2. 找到 **Bindings** 分区（部分界面版本显示在 **Functions** 分区下）。
-3. 点击 **Add binding**（或 **Add**）按钮。
+首次部署成功后，必须添加 `LOCATIONS` 绑定：
 
-   > **如果这里显示"此项目的绑定在通过 wrangler.toml 进行管理"之类的提示，且 Add 按钮无法点击：** 说明你的仓库根目录里存在 `wrangler.toml` 或 `wrangler.jsonc` 文件，Cloudflare 会因此关闭网页手动绑定入口。本项目官方仓库的根目录不包含这类文件；如果你是在自己的 Fork 里遇到这个问题，检查根目录（不是 `Worker/` 子目录）下是否有这两个文件，有就删除并 `git push` 一次，Pages 重新构建完成后再回到这个页面即可看到 Add 按钮恢复可用。
-4. 在弹出的绑定类型列表中选择 **KV namespace**。
-5. **Variable name**（变量名）一栏填写 `LOCATIONS`——必须完全一致（大小写敏感），`_worker.js` 是按这个名字读取绑定的。
-6. **KV namespace**（命名空间）一栏：
-   - 如果已经创建过命名空间，直接从下拉列表选择。
-   - 如果还没创建，点击下拉列表旁的 **Create a new namespace**，输入一个名字（例如 `ios-pin-locations`）并创建，创建后会自动填入当前绑定。
-7. 点击 **Save** 保存这个绑定。
-8. **保存后不要以为就结束了**——继续看下面第 6 步，必须重新触发一次部署，绑定才会真正生效。
+1. 进入该 Pages 项目。
+2. 打开 **Settings**。
+3. 找到 **Bindings**。
+4. 添加一个 **KV namespace** 绑定。
+5. 变量名填写 `LOCATIONS`。
+6. 选择已有命名空间，或新建一个例如 `ios-pin-locations` 的命名空间。
+7. 保存后重新部署一次。
 
-## 5.（可选）配置访问控制密钥
+## 四、可选安全设置
 
-默认情况下，任何知道你 Pages 地址和设备 Token 的人都可以读写对应坐标，适合个人使用。如果要加一层保护：
+如果不希望任意知道地址的人都能写入位置，可以增加：
 
-1. 进入 **Settings → Environment variables**。
-2. 点击 **Add variable**，添加：
-   - **Variable name**：`API_KEY`，**Value** 填你自定义的密钥，类型选择 **Secret**（加密存储，避免在控制台被直接查看）
-   - 可选再添加 **Variable name**：`ALLOWED_TOKENS`，**Value** 填允许使用的设备 Token，用英文逗号分隔，例如 `iphone-main,ipad-test`
-3. 保存后这两个变量会同时应用到 Production 和 Preview 环境（如果 Cloudflare 界面要求分别选择环境，两个都勾选）。
+- `API_KEY`：写操作密钥
+- `ALLOWED_TOKENS`：允许访问的设备 Token 白名单
 
-## 6. 让新配置生效：重新部署一次
+注意：仓库内部请求头命名已经更新为 `x-ios-pin-key`，因此如果你有额外的自动化脚本或自建调用端，请同步更新。
 
-添加 KV 绑定或环境变量之后，**必须重新触发一次部署** 才会生效：
+## 五、重新部署
 
-1. 进入 Pages 项目的 **Deployments** 标签页。
-2. 找到最新的一次部署，点击右侧 **⋯** 菜单 → **Retry deployment**。
-3. 等待状态变为 **Success**。
+新增绑定或环境变量后，必须重新部署：
 
-## 7. 打开前端控制台开始使用
+1. 进入 **Deployments**。
+2. 找到最新部署。
+3. 点击 **Retry deployment**。
+4. 等待状态变为 **Success**。
 
-直接在浏览器访问第 3 步得到的 Pages 地址即可看到控制台页面。页面打开时会自动把"站点地址"输入框填充为当前页面地址，你只需要填写：
+## 六、打开控制台
 
-- **设备 Token**：任意自定义标识，例如 `iphone-main`
-- **API Key**：只有在第 5 步设置了 `API_KEY` 时才需要填写
+访问你的 Pages 地址后：
 
-## 8. 生成并安装代理模块
+- 输入设备 Token
+- 如启用了 `API_KEY`，填写对应密钥
+- 选择目标位置
+- 生成模块配置
 
-在控制台里选择一个客户端（Surge / Loon / Quantumult X / Stash / Shadowrocket），点击"生成模块地址"。在对应的代理 App 中打开这个地址，即可安装 MITM 与脚本模块。请确保 MITM 的主机名同时包含 `gs-loc.apple.com` 和 `gs-loc-cn.apple.com`。
+## 七、客户端脚本命名
 
-## 9. 验证 protobuf 字段假设（建议在正式使用前做一次）
+当前版本的项目命名已经统一，请确认你看到的是最新版：
 
-`_worker.js` 里的 protobuf 改写逻辑基于公开的社区逆向结果。建议先用真实抓包验证一次：
+- 响应脚本：`ios-pin.js`
+- 设置脚本：`ios-pin-settings.js`
+- 存储键名：`ios_pin_settings`
+- 模块显示名：`Apple iOS Pin`
 
-1. 用 Surge/Loon 的 MITM 日志功能，抓取一份真实的 `gs-loc.apple.com/clls/wloc` 响应体，保存为 `Worker/Test/Fixtures/sample-01.bin`（注意脱敏，不要包含真实 BSSID 或个人信息）。
-2. 在本地电脑（需要装 Node.js）运行：
-   ```bash
-   cd Worker
-   npm install
-   node Scripts/Inspect-capture.mjs Test/Fixtures/sample-01.bin
-   ```
-3. 对照打印出来的字段布局与 `Worker/Src/Proto/Apple-ios-pin.ts` 中的假设，如有差异就相应调整字段编号或偏移量，**并同步把同样的改动手动应用到 `Frontend/Public/apple-ios-pin.js`**——这两个文件逻辑必须保持一致，前者只用于本地测试，后者才是线上实际运行的版本。
+如果你在客户端里还看到旧的 `wloc.js`、`wloc-settings.js` 或旧模块名，通常说明：
 
-## 10. 后续更新方式
+- 模块缓存未刷新
+- Pages 部署尚未成功
+- 设备仍在使用旧的远程脚本 URL
 
-以后修改代码只需要 `git push` 到 `main` 分支，Cloudflare Pages 会自动检测到改动、重新构建并部署，不需要再手动操作 Cloudflare 控制台。如果只是改了环境变量或 KV 绑定（没有改代码），则需要按第 6 步手动触发一次 **Retry deployment**。
+## 八、代理侧建议配置
 
-## 持续集成（仅测试，不做部署）
+除了开启 MITM，建议同时加：
 
-每次涉及 `Worker/**` 的推送都会触发 `.github/workflows/Worker-ci.yml`，自动运行 Vitest 测试套件和 TypeScript 类型检查，帮助在合并前发现 protobuf 改写逻辑的问题。这个工作流**不负责部署**——实际站点部署完全由 Cloudflare Pages 的 Git 集成自动完成（见第 3 步）。
-
-## 本地预览（可选）
-
-如果你在本地装了 Node.js，也可以在推送前先本地预览：
-
-```bash
-npm install
-npm run dev
+```conf
+DOMAIN,gs-loc.apple.com,DIRECT
+DOMAIN,gs-loc-cn.apple.com,DIRECT
 ```
 
-这会执行 `wrangler pages dev Frontend/Public`，本地启动一个 Pages 模拟环境，便于在推送前调试 `_worker.js` 和静态页面。
+同时确保：
+
+- MITM 主机名包含 `gs-loc.apple.com`
+- MITM 主机名包含 `gs-loc-cn.apple.com`
+- 全局路由按配置执行
+
+## 九、验证是否生效
+
+验证时不要只看网页选点是否成功，而要看完整链路：
+
+1. 选点后是否出现 `wloc-settings/save`
+2. 系统定位时是否出现 `/clls/wloc`
+3. 响应脚本是否已经是 `ios-pin.js`
+4. 若仍不生效，优先排查系统缓存
+
+## 十、常见误区
+
+### 误区 1：网页能打开就代表脚本已更新
+
+不一定。网页和远程脚本更新不是同一个缓存层，必须检查客户端实际拉取到的脚本内容。
+
+### 误区 2：只开 MITM 就够了
+
+不够。Apple 定位请求如果走远端代理，常常会增加不稳定因素，因此建议对两个 Apple 定位域名单独走 `DIRECT`。
+
+### 误区 3：位置没变就是脚本失败
+
+不一定。高版本 iOS 可能继续使用已有缓存；先看日志链路是否完整，再判断是不是脚本问题。

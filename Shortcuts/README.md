@@ -1,6 +1,10 @@
-# 快捷指令
+# 快捷指令目录说明
 
-把导出的 iOS 快捷指令文件放在这里，例如：
+本目录预留给后续的 iOS 快捷指令集成方案，例如：
 
-- save-location.shortcut（保存位置）
-- restore-location.shortcut（恢复位置）
+- 一键打开 iOS Pin 控制台
+- 通过 URL Scheme 触发特定设备 Token
+- 快速读取当前已保存坐标
+- 自动化清空本地 `ios_pin_settings`
+
+当前仓库版本尚未内置正式快捷指令文件，因此这里只保留说明文档。

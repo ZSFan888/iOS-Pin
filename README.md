@@ -1,224 +1,153 @@
 # iOS Pin
 
-一个基于 Cloudflare Pages 的 iOS 虚拟定位工具：通过修改 Apple iOS Pin（WiFi 定位）响应，让指定设备在系统层面"看到"你在控制台里选择的坐标，而不是真实位置。
+一个基于 Cloudflare Pages 的 iOS 系统级定位修改工具：通过 MITM 拦截 Apple 网络定位响应，并把返回坐标改写成你在网页控制台中保存的位置。
 
-> 使用前请了解：这个项目依赖 MITM（中间人）方式拦截 Apple 的定位请求，仅建议在自己的设备上用于测试、开发或隐私保护场景，请遵守当地法律法规与 App 服务条款。
+> 仅建议在自己的设备上用于测试、开发、自动化验证或隐私研究场景。使用前请确认你了解 MITM 风险，并遵守所在地法律法规与相关服务条款。
 
 ## 目录
 
 - [项目原理](#项目原理)
-- [项目结构](#项目结构)
+- [最新架构](#最新架构)
 - [准备工作](#准备工作)
-- [第一步：部署到 Cloudflare Pages](#第一步部署到-cloudflare-pages)
-- [第二步：打开控制台并保存坐标](#第二步打开控制台并保存坐标)
-- [第三步：在代理客户端安装模块](#第三步在代理客户端安装模块)
-- [第四步：验证虚拟定位是否生效](#第四步验证虚拟定位是否生效)
-- [常见问题排查](#常见问题排查)
-- [进阶：在网页端添加 KV 绑定](#进阶在网页端添加-kv-绑定)
-- [进阶：访问控制](#进阶访问控制)
-- [进阶：多设备管理](#进阶多设备管理)
-- [进阶：验证 protobuf 字段假设](#进阶验证-protobuf-字段假设)
-- [已知限制](#已知限制)
+- [快速部署](#快速部署)
+- [使用流程](#使用流程)
+- [代理模块说明](#代理模块说明)
+- [排查步骤](#排查步骤)
+- [命名规范](#命名规范)
 - [本地开发](#本地开发)
-
----
+- [已知限制](#已知限制)
 
 ## 项目原理
 
-iOS 定位系统在 GPS 信号弱或不可用时，会向 `gs-loc.apple.com/clls/wloc`（中国大陆走 `gs-loc-cn.apple.com`）发送周边 WiFi 信息，换取一个坐标。整个流程是：
+iOS 在 GPS 信号弱或不可用时，会向 `gs-loc.apple.com/clls/wloc` 或 `gs-loc-cn.apple.com/clls/wloc` 发起 Wi‑Fi 网络定位请求。iOS Pin 的核心思路不是改 App 内坐标，而是让系统收到一个被改写过的 Apple 网络定位响应，从而在系统层面“认为”设备位于目标位置。
 
-1. 代理客户端（Surge / Loon / Quantumult X / Stash / Shadowrocket）通过 MITM 拦截这条 HTTPS 请求；
-2. 代理脚本把原始请求转发给你部署的 Cloudflare Pages 站点；
-3. Pages Functions（`_worker.js`）再把请求转发给 Apple 真实服务器，拿到真实的 protobuf 响应；
-4. Functions 解析这个 protobuf 响应，把里面的经纬度字段替换成你在控制台里保存的坐标；
-5. 改写后的响应交还给代理客户端，最终交还给 iOS 系统，设备就"认为"自己在你指定的位置。
+完整链路如下：
 
-坐标数据按"设备 Token"存储在 Cloudflare KV 里，所以同一个 Pages 站点可以同时管理多台设备，每台设备用不同 Token 区分。
+1. 代理客户端通过 MITM 拦截 Apple 的 HTTPS 网络定位请求。
+2. 设备上的设置脚本把你在网页端选择的坐标写入代理客户端本地持久化存储。
+3. Apple 网络定位响应返回时，响应脚本读取本地已保存坐标。
+4. 脚本按 protobuf 结构递归查找位置对象，只替换经纬度与精度字段。
+5. 改写后的响应返回给 iOS，系统层位置随之变化。
 
-## 项目结构
+## 最新架构
 
-```
-iOS-Pin/
-├── Frontend/Public/
-│   ├── index.html        静态前端控制台
-│   ├── _worker.js          Pages Functions Advanced Mode 入口（API、中继、模块生成，零第三方依赖）
-│   └── apple-ios-pin.js       protobuf 改写逻辑（纯 JS，_worker.js 直接 import）
-├── Worker/
-│   ├── Src/Proto/          protobuf 改写逻辑的 TypeScript 版本（供本地测试/类型检查使用）
-│   ├── Test/                Vitest 测试 + 抓包回归测试
-│   └── Scripts/              protobuf 字段转储调试工具
-├── Modules-Templates/       各代理客户端模块模板说明
-├── Shortcuts/               iOS 快捷指令占位目录
-├── README.md                本文件
-└── DEPLOY.md                详细的 Cloudflare Pages 部署步骤
-```
+当前版本已经从“依赖原项目脚本”切换为**自有防御式实现**，重点是把最容易出错的部分都拆开处理：
 
-> `Worker/Src/Proto/Apple-ios-pin.ts` 是同一套 protobuf 改写逻辑的 TypeScript 版本，专门用于本地 Vitest 测试和类型检查；线上实际运行的是 `Frontend/Public/apple-ios-pin.js` 这个纯 JavaScript 版本，因为 Cloudflare Pages 在"未设置构建命令"模式下直接用 esbuild 处理 `_worker.js`，不会执行 npm install 或做 TypeScript 类型剥离，所以线上代码必须是零依赖的纯 JS，且不能引用 `Frontend/Public` 目录之外的文件。
+- `Frontend/Public/_worker.js`：统一输出网页、模块配置和客户端脚本。
+- `ios-pin.js`：Apple 网络定位响应改写脚本，内置防御式 protobuf 递归 patcher。
+- `ios-pin-settings.js`：坐标保存脚本，兼容 Shadowrocket 环境，不依赖 `URL` 或 `URLSearchParams`。
+- `Worker/Src/Proto/Apple-ios-pin.ts`：TypeScript 版本的协议逻辑，供测试和校验使用。
+- `Worker/Test/`：协议回归测试、样本验证、抓包夹具。
+
+这一版的核心特征：
+
+- 项目内部命名统一为 `ios-pin`。
+- Apple 官方协议路径仍保留 `wloc`，因为这是上游协议的一部分，不能擅自改名。
+- 保存层与改写层完全解耦，便于定位故障点。
+- 所有异常默认透传原响应，避免把 Apple 返回体改坏。
 
 ## 准备工作
 
-开始之前，确认你有以下条件：
+开始前请确认：
 
-- 一个 **Cloudflare 账号**（免费版即可）
-- 一个 **GitHub 仓库**，代码已推送上去
-- 一台已安装以下任一代理客户端的 iOS 设备：Surge、Loon、Quantumult X、Stash 或 Shadowrocket，并已启用该客户端的 **MITM 功能**（需要先在设备上安装客户端提供的根证书）
-- （可选）本地电脑安装 **Node.js 20+**，仅在你想本地预览时需要
+- 你有一个 Cloudflare 账号。
+- 仓库代码已经放到 GitHub。
+- 你有一台安装了 Surge、Loon、Quantumult X、Stash 或 Shadowrocket 的 iOS 设备。
+- 代理客户端已经正确开启 MITM，并安装且信任了对应证书。
+- 你知道自己的 Pages 域名，或者准备自行部署一个新的 Pages 项目。
 
-## 第一步：部署到 Cloudflare Pages
+## 快速部署
 
-1. 登录 [Cloudflare 控制台](https://dash.cloudflare.com)，进入 **Workers & Pages**。
-2. 点击 **Create application** → **Pages** → **Connect to Git**，选择这个仓库。
-3. 构建设置填写：
-   - **Build command**：留空
-   - **Build output directory**：`Frontend/Public`
-4. 点击 **Save and Deploy**，等待第一次部署完成。
-5. 部署完成后，进入该 Pages 项目的 **Settings → Bindings**，添加一个 **KV Namespace** 绑定：绑定名称填 `LOCATIONS`，命名空间可以现场新建，例如叫 `ios-pin-locations`。
-6. 重新触发一次部署（在 **Deployments** 页面点击最新部署旁的 **Retry deployment** 即可），让 KV 绑定生效。
+1. 在 Cloudflare 中创建 Pages 项目并连接当前 GitHub 仓库。
+2. 构建设置保持最简：`Build command` 留空，`Build output directory` 设为 `Frontend/Public`。
+3. 首次部署成功后，在 Pages 项目设置中添加 `LOCATIONS` 这个 KV 绑定。
+4. 如果要限制写入权限，再增加环境变量 `API_KEY`，可选增加 `ALLOWED_TOKENS`。
+5. 每次新增绑定或环境变量后，都要重新触发一次部署。
 
-部署完成后，Cloudflare 会给你一个形如 `https://ios-pin.pages.dev` 的地址——这个地址同时是你的前端控制台地址和后端 API 地址，记下它。之后你只需要 `git push` 到仓库，Pages 就会自动重新构建部署，不需要再手动操作。
+更细的控制台截图式说明，请看 `DEPLOY.md`。
 
-> **如果 Settings → Bindings 页面提示"此项目的绑定在通过 wrangler.toml 进行管理"、"了解更多"这类文字，导致你无法在网页上手动添加绑定：** 这是因为仓库根目录里存在 `wrangler.toml`/`wrangler.jsonc` 配置文件，Cloudflare Pages 检测到它之后会认为绑定应该由这个配置文件统一管理，从而**关闭网页手动添加绑定的入口**。本项目已经移除了根目录的 Wrangler 配置文件，绑定完全通过网页控制台管理，如果你是从旧版本升级上来仍遇到这个提示，请确认仓库根目录下**没有** `wrangler.toml` 或 `wrangler.jsonc` 文件，删除后重新推送一次即可恢复网页端绑定入口。详细的网页端绑定图文教程见下方"进阶：在网页端添加 KV 绑定"。
+## 使用流程
 
-## 第二步：打开控制台并保存坐标
+### 1. 打开网页控制台
 
-1. 用浏览器打开第一步部署好的 Pages 地址，会看到地图控制台页面。
-2. 页面会自动把"站点地址"输入框填成当前地址，你不需要手动填。
-3. 在"设备 Token"输入框里填一个你自定义的标识，例如 `iphone-main`——同一台设备之后都用这个 Token。
-4. 在地图上点击你想要设置的位置，或者在搜索框里输入地名搜索。
-5. 点击"保存坐标"按钮，坐标会写入 Cloudflare KV，并出现在下方的历史记录列表中。
+部署完成后，直接访问你的 Pages 地址。页面会自动生成当前站点对应的模块地址和脚本地址。
 
-> 如果部署时设置过 `API_KEY`（见"进阶：访问控制"），这里还需要在"API Key"输入框里填入对应密钥，否则保存会被拒绝。
+### 2. 选择坐标并保存
 
-## 第三步：在代理客户端安装模块
+在地图上选点后，页面会通过 `https://gs-loc.apple.com/wloc-settings/save?lon=...&lat=...` 这条链路触发代理客户端本地保存脚本。最新版本的保存脚本支持：
 
-1. 在控制台里找到"生成模块"区域，选择你使用的客户端（Surge / Loon / Quantumult X / Stash / Shadowrocket）。
-2. 点击生成后会得到一个模块订阅地址，复制它。
-3. 打开对应的代理 App，找到"模块"或"脚本"管理页面，粘贴这个地址并添加。
-4. **确认 MITM 主机名列表里同时包含** `gs-loc.apple.com` 和 `gs-loc-cn.apple.com`——这一步很关键，遗漏任何一个都会导致部分请求不走改写逻辑。
-5. 启用刚添加的模块，并重启一次代理客户端的 MITM 功能，确保新证书和规则生效。
+- `action=save`：保存坐标
+- `action=query`：读取当前已保存坐标
+- `action=clear`：清空已保存坐标
 
-## 第四步：验证虚拟定位是否生效
+### 3. 安装模块
 
-1. 在 iOS 设备上，打开一个依赖网络定位的场景，最简单的办法是**关闭 Wi-Fi 定位精度提示、暂时关掉 GPS 权限**，强制系统走 WLOC 网络定位路径，或者直接观察地图 App 在室内/信号差环境下的定位结果。
-2. 打开代理客户端的 MITM 日志，找一条 `gs-loc.apple.com/clls/wloc` 的请求，查看响应头里是否带有 `x-ios-pin-relay: 1` 和 `x-ios-pin-spoofed: 1`——这两个头是后端加上的调试标记，出现说明请求确实经过了你的 Pages 站点并执行了坐标改写。
-3. 如果标记显示 `x-ios-pin-spoofed: 0`，通常是因为该次响应体过短或状态码非 2xx，后端判断为无效响应直接透传，不代表配置有问题。
+在网页里选择对应客户端后，安装生成的模块。当前项目内部统一使用：
 
-## 常见问题排查
+- `ios-pin.js`
+- `ios-pin-settings.js`
+- `ios_pin_settings` 持久化键名
 
-| 现象 | 可能原因 |
-|---|---|
-| 打开 Pages 地址显示 404 或空白页 | 检查 Pages 项目的 Build output directory 是否填的是 `Frontend/Public`，重新触发一次部署 |
-| 保存坐标时报"未找到坐标"或读写失败 | 检查 Pages 项目的 Bindings 里是否已添加名为 `LOCATIONS` 的 KV 绑定，添加后需要重新部署一次才会生效 |
-| 保存坐标时报 401 | 部署时设置了 `API_KEY`，但前端"API Key"字段没填或填错 |
-| 保存坐标时报 403 | 当前 Token 不在 `ALLOWED_TOKENS` 白名单里 |
-| 代理客户端里看不到改写效果 | 确认 MITM 主机名同时包含 `gs-loc.apple.com` 与 `gs-loc-cn.apple.com`，并重启一次 MITM |
-| 定位仍然是真实位置 | 检查代理客户端的 MITM 日志确认请求确实被拦截；某些 App 会缓存旧定位结果，可尝试重启 App 或设备 |
-| 抓包看到响应体，但坐标没变 | 参考下方"进阶：验证 protobuf 字段假设"，可能是 Apple 更新了响应结构 |
+### 4. 触发系统定位
 
-## 进阶：在网页端添加 KV 绑定
+打开苹果地图、天气或其他会调用系统定位的组件，观察代理日志中是否出现：
 
-Cloudflare Pages 支持两种管理绑定（KV、环境变量等）的方式：**通过网页控制台手动添加**，或者**通过仓库里的 `wrangler.toml`/`wrangler.jsonc` 配置文件统一管理**。这两种方式是互斥的——只要 Cloudflare 检测到仓库根目录存在 Wrangler 配置文件，就会认为你选择了"配置文件管理"模式，进而在 **Settings → Bindings** 页面显示一句提示（类似"此项目的绑定在通过 wrangler.toml 进行管理"），并**关闭网页手动添加绑定的按钮**。
+- `gs-loc.apple.com/clls/wloc`
+- `gs-loc-cn.apple.com/clls/wloc`
 
-本项目采用的是**网页端手动管理绑定**这种方式，更适合不熟悉命令行、只想在浏览器里点几下就完成配置的用户。因此仓库根目录**不包含**任何 `wrangler.toml` 或 `wrangler.jsonc` 文件。如果你在自己的 Fork 或旧版本里仍然看到"绑定由配置文件管理"的提示，请按下面步骤排查。
+如果没有出现，说明系统当前没有走 Apple 网络定位链路，而不是脚本没生效。
 
-### 如果你看到"绑定由 wrangler.toml 管理"的提示
+## 代理模块说明
 
-1. 检查你仓库的**根目录**（不是 `Worker/` 子目录）下是否存在 `wrangler.toml` 或 `wrangler.jsonc` 文件。
-2. 如果存在，删除这个文件并提交、推送：
-   ```bash
-   git rm wrangler.toml
-   # 或者
-   git rm wrangler.jsonc
-   git commit -m "chore: remove wrangler config to enable dashboard-managed bindings"
-   git push
-   ```
-3. 推送后 Cloudflare Pages 会自动重新构建部署。构建完成后，重新进入该 Pages 项目的 **Settings → Bindings** 页面，之前的提示应该已经消失，"Add binding" 按钮变为可点击状态。
+当前模块命名已经统一：
 
-> 注意：`Worker/wrangler.jsonc` 这个文件是给 `Worker/` 子目录下的独立测试/调试脚本用的，它不影响 Pages 项目本身的绑定管理，不需要删除。只有**仓库根目录**下的配置文件才会触发这个限制。
+- Shadowrocket：`Apple iOS Pin`
+- 设置脚本：`iOS Pin Settings`
+- 脚本路径：`/script/ios-pin.js` 与 `/script/ios-pin-settings.js`
 
-### 完整的网页端添加 KV 绑定教程
+推荐配置原则：
 
-1. 登录 [Cloudflare 控制台](https://dash.cloudflare.com)，进入 **Workers & Pages**。
-2. 点击你的 Pages 项目名称，进入项目详情页。
-3. 顶部标签栏切换到 **Settings**。
-4. 左侧或页面中找到 **Bindings**（有些界面版本显示在 **Functions** 分区下）。
-5. 点击 **Add binding**（或 **Add**）按钮。
-6. 在弹出的绑定类型列表中选择 **KV namespace**。
-7. **Variable name**（变量名）一栏，填写 `LOCATIONS`——这个名字必须和代码里 `_worker.js` 读取的绑定名完全一致，大小写敏感，不能改成别的名字。
-8. **KV namespace**（命名空间）一栏：
-   - 如果你之前已经创建过 KV 命名空间，直接从下拉列表里选择它。
-   - 如果还没有创建过，点击下拉列表旁边的 **Create a new namespace** 或类似入口，输入一个便于识别的名字（例如 `ios-pin-locations`），创建后会自动回填到当前绑定的下拉列表里。
-9. 确认无误后点击 **Save**（保存）。
-10. 保存后回到 **Deployments** 标签页，找到当前最新的一次部署，点击右侧的 **⋯**（更多操作）菜单，选择 **Retry deployment**（重新部署）。**这一步不能省略**——新添加或修改的绑定只有在下一次部署中才会真正生效，仅仅点了"Save"而不重新部署的话，站点仍然会读取不到 KV，继续报"保存失败"。
-11. 等待新的部署状态变为 **Success**，再回到你的站点地址刷新页面，重新测试保存坐标。
+- 对 `gs-loc.apple.com` 和 `gs-loc-cn.apple.com` 开启 MITM。
+- 给这两个域名单独加 `DIRECT` 规则，避免 Apple 定位请求跑到远端代理节点。
+- 确保全局路由按配置分流，而不是单纯全局代理或全局直连。
 
-### 验证绑定是否已经生效
+## 排查步骤
 
-打开你的站点地址，尝试保存一次坐标：
+建议按这个顺序检查：
 
-- 如果保存成功并出现在历史记录列表中，说明绑定已经生效。
-- 如果 Toast 提示里出现类似"LOCATIONS KV binding not configured"的文字，说明绑定还没添加成功或还没重新部署，请返回上面步骤 3-11 重新检查。
+1. 证书是否已安装并完全信任。
+2. MITM 主机名是否包含 `gs-loc.apple.com` 与 `gs-loc-cn.apple.com`。
+3. 模块是否加载了最新的 `ios-pin.js` 与 `ios-pin-settings.js`。
+4. 选点后是否真的打到了 `wloc-settings/save`。
+5. 系统定位时是否真的出现了 `/clls/wloc`。
+6. 如果脚本无报错但位置不变，优先考虑系统缓存问题。
 
-## 进阶：访问控制
+高版本 iOS 可能会更积极缓存 `locationd` 结果，因此即使脚本已改写成功，系统也可能继续沿用旧缓存。必要时可切飞行模式、重开定位服务或重启设备后再验证。
 
-默认情况下，任何知道你 Pages 地址和 Token 的人都可以读写对应设备的坐标，适合个人使用，但公开分享前建议开启保护：
+## 命名规范
 
-1. 在 Cloudflare Pages 项目的 **Settings → Environment variables** 里添加：
-   - `API_KEY`：要求所有写请求都携带该密钥（放在 `x-ios-pin-key` 请求头中），类型建议选择 **Secret**
-   - `ALLOWED_TOKENS`：允许使用的设备 Token 白名单，用逗号分隔，类型同样建议选择 **Secret**
-2. 保存后重新触发一次部署让变量生效。
-3. 前端"API Key"输入框填入相同密钥即可正常使用。
+仓库已经完成一轮命名收口：
 
-## 进阶：多设备管理
+- **项目内部命名**：统一使用 `ios-pin`
+- **内部请求头**：统一使用 `x-ios-pin-*`
+- **内部存储键**：统一使用 `ios_pin_settings`
+- **Apple 协议路径**：保留 `wloc`
 
-控制台里的设备列表可以注册多组 `{站点地址, Token}` 组合并一键切换，选中某个设备会自动回填地址和 Token，并刷新对应的历史记录。目前设备列表只存在于当前浏览器会话内存中，刷新页面会重置，如果需要跨会话保存，可以考虑后续把设备列表也存进 Cloudflare KV。
-
-## 进阶：验证 protobuf 字段假设
-
-`Worker/Src/Proto/Apple-ios-pin.ts` 里的字段编号和编码方式基于公开的社区逆向结果，如果 Apple 后续调整了响应结构，改写逻辑可能需要跟着调整。建议上线前用自己的真实抓包数据验证一遍：
-
-1. 用 Surge/Loon 的 MITM 日志功能，抓取一份真实的 `gs-loc.apple.com/clls/wloc` 响应体（原始字节）。
-2. 保存为 `Worker/Test/Fixtures/sample-01.bin`（注意脱敏，不要提交包含真实 BSSID 或个人信息的完整抓包，可参考 `Worker/Test/Fixtures/README.md`）。
-3. 运行字段转储工具，直观查看字段编号和 wire type：
-   ```bash
-   cd Worker
-   node Scripts/Inspect-capture.mjs Test/Fixtures/sample-01.bin
-   ```
-4. 对照 `Apple-ios-pin.ts` 中的字段假设，如有差异就调整字段编号或偏移量，并同步更新 `Frontend/Public/_worker.js` 里对应的引用逻辑。
-5. 只要 `sample-01.bin` 文件存在，`Worker/Test/Apple-ios-pin.test.ts` 里对应的回归测试会自动从"跳过"变为"执行"，无需改代码。
-
-## 已知限制
-
-- 历史记录列表存储在 Cloudflare KV 中（`history:<token>`），每个设备 Token 最多保留 20 条最近记录，超出会自动淘汰最旧的。
-- 前端地点搜索使用 OpenStreetMap Nominatim，免费但有速率限制（约每秒 1 次请求），适合个人使用，生产环境大流量建议换成付费地理编码服务。
-- protobuf 改写逻辑基于公开逆向结果，尚未经过官方文档确认，如遇失效请参考上面的验证步骤排查。
+保留 `wloc` 的原因很简单：它是 Apple 网络定位协议真实路径的一部分，不是原项目品牌名，不能为了美观随意替换。
 
 ## 本地开发
 
-### 本地预览 Pages 站点
+如需本地调试：
 
-```bash
-npm install
-npm run dev
-```
+- 前端核心目录：`Frontend/Public`
+- Worker 逻辑与测试：`Worker/`
+- 建议先改 `Worker/Src/Proto/Apple-ios-pin.ts` 和测试，再同步到前端脚本输出逻辑
 
-这会执行 `wrangler pages dev Frontend/Public`，Wrangler 会打印一个本地地址（通常是 `http://localhost:8788`），本地开发期间可以直接访问它预览前后端，包括 `_worker.js` 里的 API 逻辑。
+如果只是部署使用，不需要本地安装任何依赖，也不需要在根目录放 `wrangler.toml`。
 
-### 单独预览前端样式
+## 已知限制
 
-如果只想调整界面样式，不连接真实后端，可以直接打开 `Frontend/Public/index.html`，或用任意静态服务器托管，再手动填入其他环境的站点地址测试。
-
-### 运行 protobuf 相关测试
-
-```bash
-cd Worker
-npm install
-npm run test
-npx tsc --noEmit
-```
-
-每次涉及 `Worker/**` 的推送都会触发 GitHub Actions（`.github/workflows/Worker-ci.yml`）自动运行同样的检查；实际站点的部署则完全由 Cloudflare Pages 的 Git 集成负责，push 到 `main` 后会自动构建上线。
-
----
-
-更完整的 Cloudflare Pages 图文部署步骤、KV 绑定与密钥管理细节，请参见 [`DEPLOY.md`](./DEPLOY.md)。
+- 这类方案依赖 Apple 当前的网络定位协议结构，未来可能随系统升级而变化。
+- 某些场景优先使用 GPS，不一定会触发 `clls/wloc`。
+- 高版本 iOS 的系统缓存可能让“脚本成功、位置没立即变更”看起来像失效。
+- 并非所有第三方 App 都只信任系统层网络定位结果。
