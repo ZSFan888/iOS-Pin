@@ -21,7 +21,7 @@
 - 一台可运行 MITM 代理客户端的 iOS 设备
 - 已安装并信任代理客户端根证书
 
-## 二、创建 Pages 项目
+## 二、创建 Worker 统一部署
 
 1. 登录 Cloudflare 控制台。
 2. 打开 **Workers & Pages**。
@@ -40,7 +40,7 @@
 
 首次部署成功后，必须添加 `LOCATIONS` 绑定：
 
-1. 进入该 Pages 项目。
+1. 进入该 Worker 统一部署。
 2. 打开 **Settings**。
 3. 找到 **Bindings**。
 4. 添加一个 **KV namespace** 绑定。

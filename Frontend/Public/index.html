@@ -370,7 +370,8 @@ input,select{font:inherit;color:inherit}
   const moduleUrlEl = document.getElementById('moduleUrl');
   function updateModuleUrl(client){
     const base = window.location.origin;
-    moduleUrlEl.textContent = base + '/api/module/' + client;
+    const token = 'default';
+    moduleUrlEl.textContent = base + '/api/module/' + client + '/' + token;
   }
   document.querySelectorAll('.tab').forEach(tab => tab.addEventListener('click', () => {
     document.querySelectorAll('.tab').forEach(t2 => t2.setAttribute('aria-selected', 'false'));

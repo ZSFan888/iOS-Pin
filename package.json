@@ -2,8 +2,8 @@
   "name": "ios-pin",
   "private": true,
   "scripts": {
-    "dev": "wrangler pages dev Frontend/Public --compatibility-date=2026-07-18",
-    "deploy": "wrangler pages deploy Frontend/Public --project-name ios-pin"
+    "dev": "cd Worker && wrangler dev",
+    "deploy": "cd Worker && wrangler deploy"
   },
   "devDependencies": {
     "wrangler": "^4.86.0"
