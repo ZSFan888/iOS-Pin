@@ -132,13 +132,6 @@ async function requireWriteAuth(c: any, next: () => Promise<void>) {
   await next()
 }
 
-app.get('/', (c) => new Response(JSON.stringify({
-  name: 'ios-pin',
-  status: 'ok',
-  version: VERSION,
-  endpoints: ['/api/location/:token', '/api/module/:client/:token', '/relay/apple/:token/clls/wloc', '/healthz']
-}), { headers: noStoreHeaders() }))
-
 app.get('/healthz', (c) => new Response(JSON.stringify({ ok: true, version: VERSION }), { headers: noStoreHeaders() }))
 
 app.get('/api/location/:token', async (c) => {
@@ -322,8 +315,6 @@ relay().catch(err => $done({ status: 502, body: String(err && err.message ? err.
   return new Response(js, { headers: { 'content-type': 'application/javascript; charset=utf-8', 'cache-control': 'no-store, no-cache, must-revalidate, max-age=0' } })
 })
 
-export default app
-
 
 async function serveAssetFallback(request: Request, env: Bindings, executionCtx?: ExecutionContext) {
   const url = new URL(request.url)
@@ -339,8 +330,8 @@ async function serveAssetFallback(request: Request, env: Bindings, executionCtx?
 export default {
   async fetch(request: Request, env: Bindings, executionCtx: ExecutionContext) {
     const url = new URL(request.url)
-    const dynamicPrefixes = ['/', '/healthz', '/api/', '/relay/', '/script/']
-    const isDynamic = url.pathname === '/' || url.pathname === '/healthz' || dynamicPrefixes.some(prefix => prefix !== '/' && url.pathname.startsWith(prefix))
+    const dynamicPrefixes = ['/healthz', '/api/', '/relay/', '/script/']
+    const isDynamic = url.pathname === '/healthz' || dynamicPrefixes.some(prefix => url.pathname.startsWith(prefix))
     if (isDynamic) {
       return app.fetch(request, env, executionCtx)
     }
