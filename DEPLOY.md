@@ -10,9 +10,9 @@
 ## 2. 项目结构说明
 
 - `Frontend/Public/index.html`：前端地图控制台页面
-- `Frontend/Public/_worker.js`：Pages Functions Advanced Mode 入口，包含坐标存取 API、Apple WLOC 中继逻辑、代理模块生成逻辑。这个文件是**零第三方依赖的纯 JavaScript**，因为 Cloudflare Pages 在未设置 Build command 时不会执行 `npm install`，也不会做 TypeScript 类型剥离
-- `Frontend/Public/apple-wloc.js`：protobuf 坐标改写逻辑的纯 JS 版本，被 `_worker.js` 用相对路径 `import` 引用（必须放在 `Frontend/Public` 目录内，Pages 不会打包目录外的文件）
-- `Worker/Src/Proto/Apple-wloc.ts`：同一套逻辑的 TypeScript 版本，只用于本地 Vitest 测试和类型检查，不参与线上部署
+- `Frontend/Public/_worker.js`：Pages Functions Advanced Mode 入口，包含坐标存取 API、Apple iOS Pin 中继逻辑、代理模块生成逻辑。这个文件是**零第三方依赖的纯 JavaScript**，因为 Cloudflare Pages 在未设置 Build command 时不会执行 `npm install`，也不会做 TypeScript 类型剥离
+- `Frontend/Public/apple-ios-pin.js`：protobuf 坐标改写逻辑的纯 JS 版本，被 `_worker.js` 用相对路径 `import` 引用（必须放在 `Frontend/Public` 目录内，Pages 不会打包目录外的文件）
+- `Worker/Src/Proto/Apple-ios-pin.ts`：同一套逻辑的 TypeScript 版本，只用于本地 Vitest 测试和类型检查，不参与线上部署
 - `Worker/Test/`：针对 protobuf 改写逻辑的 Vitest 测试
 
 > 本项目**不在仓库根目录放置** `wrangler.toml` 或 `wrangler.jsonc` 配置文件，这是有意为之：Cloudflare Pages 一旦在根目录检测到这类配置文件，就会认为绑定（KV、环境变量等）应该由配置文件统一管理，从而**关闭网页控制台里手动添加绑定的入口**，页面会提示类似"此项目的绑定在通过 wrangler.toml 进行管理"。为了让你能完全通过网页操作完成部署和配置，本项目选择不使用根目录配置文件，所有绑定都在下面第 4 步的网页界面里手动添加。
@@ -90,7 +90,7 @@
    npm install
    node Scripts/Inspect-capture.mjs Test/Fixtures/sample-01.bin
    ```
-3. 对照打印出来的字段布局与 `Worker/Src/Proto/Apple-wloc.ts` 中的假设，如有差异就相应调整字段编号或偏移量，**并同步把同样的改动手动应用到 `Frontend/Public/apple-wloc.js`**——这两个文件逻辑必须保持一致，前者只用于本地测试，后者才是线上实际运行的版本。
+3. 对照打印出来的字段布局与 `Worker/Src/Proto/Apple-ios-pin.ts` 中的假设，如有差异就相应调整字段编号或偏移量，**并同步把同样的改动手动应用到 `Frontend/Public/apple-ios-pin.js`**——这两个文件逻辑必须保持一致，前者只用于本地测试，后者才是线上实际运行的版本。
 
 ## 10. 后续更新方式
 

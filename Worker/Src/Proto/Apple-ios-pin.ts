@@ -6,7 +6,7 @@ export type Coord = {
 const UINT64_MASK = (1n << 64n) - 1n
 
 /**
- * Apple WLOC response wire format (confirmed against public reverse-engineering
+ * Apple iOS Pin response wire format (confirmed against public reverse-engineering
  * write-ups — see Worker/Test/Fixtures/README.md for sources):
  *
  *   [10-byte opaque header][repeated top-level field 2 = AccessPoint entry]
@@ -166,7 +166,7 @@ function replaceAccessPointEntry(entry: Uint8Array, latMicro: bigint, lngMicro: 
 }
 
 /**
- * Rewrites every AccessPoint entry (top-level field 2) in an Apple WLOC
+ * Rewrites every AccessPoint entry (top-level field 2) in an Apple iOS Pin
  * response body to report the same spoofed coordinate. Rewriting *all*
  * entries — not just the first — matters because locationd trilaterates
  * using multiple entries; leaving real coordinates on other entries would

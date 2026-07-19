@@ -10,7 +10,7 @@ import {
   encodeZigzagVarint,
   decodeZigzagVarint,
   toSigned64
-} from '../Src/Proto/Apple-wloc'
+} from '../Src/Proto/Apple-ios-pin'
 
 function buildFakeWlocResponse(latMicro: bigint, lngMicro: bigint, bssid = '64:d8:14:72:60:c'): Uint8Array {
   const header = new Uint8Array(10).fill(0)

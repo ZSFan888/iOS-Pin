@@ -1,6 +1,6 @@
 # iOS Pin
 
-一个基于 Cloudflare Pages 的 iOS 虚拟定位工具：通过修改 Apple WLOC（WiFi 定位）响应，让指定设备在系统层面"看到"你在控制台里选择的坐标，而不是真实位置。
+一个基于 Cloudflare Pages 的 iOS 虚拟定位工具：通过修改 Apple iOS Pin（WiFi 定位）响应，让指定设备在系统层面"看到"你在控制台里选择的坐标，而不是真实位置。
 
 > 使用前请了解：这个项目依赖 MITM（中间人）方式拦截 Apple 的定位请求，仅建议在自己的设备上用于测试、开发或隐私保护场景，请遵守当地法律法规与 App 服务条款。
 
@@ -42,7 +42,7 @@ iOS-Pin/
 ├── Frontend/Public/
 │   ├── index.html        静态前端控制台
 │   ├── _worker.js          Pages Functions Advanced Mode 入口（API、中继、模块生成，零第三方依赖）
-│   └── apple-wloc.js       protobuf 改写逻辑（纯 JS，_worker.js 直接 import）
+│   └── apple-ios-pin.js       protobuf 改写逻辑（纯 JS，_worker.js 直接 import）
 ├── Worker/
 │   ├── Src/Proto/          protobuf 改写逻辑的 TypeScript 版本（供本地测试/类型检查使用）
 │   ├── Test/                Vitest 测试 + 抓包回归测试
@@ -53,7 +53,7 @@ iOS-Pin/
 └── DEPLOY.md                详细的 Cloudflare Pages 部署步骤
 ```
 
-> `Worker/Src/Proto/Apple-wloc.ts` 是同一套 protobuf 改写逻辑的 TypeScript 版本，专门用于本地 Vitest 测试和类型检查；线上实际运行的是 `Frontend/Public/apple-wloc.js` 这个纯 JavaScript 版本，因为 Cloudflare Pages 在"未设置构建命令"模式下直接用 esbuild 处理 `_worker.js`，不会执行 npm install 或做 TypeScript 类型剥离，所以线上代码必须是零依赖的纯 JS，且不能引用 `Frontend/Public` 目录之外的文件。
+> `Worker/Src/Proto/Apple-ios-pin.ts` 是同一套 protobuf 改写逻辑的 TypeScript 版本，专门用于本地 Vitest 测试和类型检查；线上实际运行的是 `Frontend/Public/apple-ios-pin.js` 这个纯 JavaScript 版本，因为 Cloudflare Pages 在"未设置构建命令"模式下直接用 esbuild 处理 `_worker.js`，不会执行 npm install 或做 TypeScript 类型剥离，所以线上代码必须是零依赖的纯 JS，且不能引用 `Frontend/Public` 目录之外的文件。
 
 ## 准备工作
 
@@ -175,7 +175,7 @@ Cloudflare Pages 支持两种管理绑定（KV、环境变量等）的方式：*
 
 ## 进阶：验证 protobuf 字段假设
 
-`Worker/Src/Proto/Apple-wloc.ts` 里的字段编号和编码方式基于公开的社区逆向结果，如果 Apple 后续调整了响应结构，改写逻辑可能需要跟着调整。建议上线前用自己的真实抓包数据验证一遍：
+`Worker/Src/Proto/Apple-ios-pin.ts` 里的字段编号和编码方式基于公开的社区逆向结果，如果 Apple 后续调整了响应结构，改写逻辑可能需要跟着调整。建议上线前用自己的真实抓包数据验证一遍：
 
 1. 用 Surge/Loon 的 MITM 日志功能，抓取一份真实的 `gs-loc.apple.com/clls/wloc` 响应体（原始字节）。
 2. 保存为 `Worker/Test/Fixtures/sample-01.bin`（注意脱敏，不要提交包含真实 BSSID 或个人信息的完整抓包，可参考 `Worker/Test/Fixtures/README.md`）。
@@ -184,8 +184,8 @@ Cloudflare Pages 支持两种管理绑定（KV、环境变量等）的方式：*
    cd Worker
    node Scripts/Inspect-capture.mjs Test/Fixtures/sample-01.bin
    ```
-4. 对照 `Apple-wloc.ts` 中的字段假设，如有差异就调整字段编号或偏移量，并同步更新 `Frontend/Public/_worker.js` 里对应的引用逻辑。
-5. 只要 `sample-01.bin` 文件存在，`Worker/Test/Apple-wloc.test.ts` 里对应的回归测试会自动从"跳过"变为"执行"，无需改代码。
+4. 对照 `Apple-ios-pin.ts` 中的字段假设，如有差异就调整字段编号或偏移量，并同步更新 `Frontend/Public/_worker.js` 里对应的引用逻辑。
+5. 只要 `sample-01.bin` 文件存在，`Worker/Test/Apple-ios-pin.test.ts` 里对应的回归测试会自动从"跳过"变为"执行"，无需改代码。
 
 ## 已知限制
 

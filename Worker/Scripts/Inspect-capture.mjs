@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Manual protobuf field inspector for Apple WLOC response captures.
+ * Manual protobuf field inspector for Apple iOS Pin response captures.
  *
  * Usage:
  *   node scripts/inspect-capture.mjs test/fixtures/sample-01.bin
