@@ -54,13 +54,13 @@ iOS 在 GPS 信号弱或不可用时，会向 `gs-loc.apple.com/clls/wloc` 或 `
 - 仓库代码已经放到 GitHub。
 - 你有一台安装了 Surge、Loon、Quantumult X、Stash 或 Shadowrocket 的 iOS 设备。
 - 代理客户端已经正确开启 MITM，并安装且信任了对应证书。
-- 你知道自己的 Pages 域名，或者准备自行部署一个新的 Worker 统一部署。
+- 你知道自己的 Pages 域名，或者准备自行部署一个新的 Pages Functions 一体化部署。
 
 ## 快速部署
 
-1. 在 Cloudflare 中创建 Worker 统一部署并连接当前 GitHub 仓库。
+1. 在 Cloudflare 中创建 Pages Functions 一体化部署并连接当前 GitHub 仓库。
 2. 构建设置保持最简：`Build command` 留空，`Build output directory` 设为 `Frontend/Public`。
-3. 首次部署成功后，在 Worker 统一部署设置中添加 `LOCATIONS` 这个 KV 绑定。
+3. 首次部署成功后，在 Pages Functions 一体化部署设置中添加 `LOCATIONS` 这个 KV 绑定。
 4. 如果要限制写入权限，再增加环境变量 `API_KEY`，可选增加 `ALLOWED_TOKENS`。
 5. 每次新增绑定或环境变量后，都要重新触发一次部署。
 
@@ -151,3 +151,6 @@ iOS 在 GPS 信号弱或不可用时，会向 `gs-loc.apple.com/clls/wloc` 或 `
 - 某些场景优先使用 GPS，不一定会触发 `clls/wloc`。
 - 高版本 iOS 的系统缓存可能让“脚本成功、位置没立即变更”看起来像失效。
 - 并非所有第三方 App 都只信任系统层网络定位结果。
+
+
+> 当前版本已集成到 Cloudflare Pages Functions，不再需要单独部署 Worker。

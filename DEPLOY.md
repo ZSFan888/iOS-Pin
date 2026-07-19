@@ -21,7 +21,7 @@
 - 一台可运行 MITM 代理客户端的 iOS 设备
 - 已安装并信任代理客户端根证书
 
-## 二、创建 Worker 统一部署
+## 二、创建 Pages Functions 一体化部署
 
 1. 登录 Cloudflare 控制台。
 2. 打开 **Workers & Pages**。
@@ -40,7 +40,7 @@
 
 首次部署成功后，必须添加 `LOCATIONS` 绑定：
 
-1. 进入该 Worker 统一部署。
+1. 进入该 Pages Functions 一体化部署。
 2. 打开 **Settings**。
 3. 找到 **Bindings**。
 4. 添加一个 **KV namespace** 绑定。
@@ -127,3 +127,6 @@ DOMAIN,gs-loc-cn.apple.com,DIRECT
 ### 误区 3：位置没变就是脚本失败
 
 不一定。高版本 iOS 可能继续使用已有缓存；先看日志链路是否完整，再判断是不是脚本问题。
+
+
+> 当前版本已集成到 Cloudflare Pages Functions，不再需要单独部署 Worker。
