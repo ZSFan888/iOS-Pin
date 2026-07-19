@@ -119,7 +119,7 @@ function buildRelayResponseHeaders(upstream: Response, spoofed: boolean) {
 
 async function requireWriteAuth(c: any, next: () => Promise<void>) {
   const env = c.env as Bindings
-  const token = normalizeToken(c.req.param('token'))
+  const token = normalizeToken(c.req.param('token') ?? '')
   if (token && !isTokenAllowed(env, token)) {
     return c.json({ error: 'token not allowed' }, 403)
   }
@@ -142,7 +142,7 @@ app.get('/api/location/:token', async (c) => {
 })
 
 app.post('/api/location/:token', requireWriteAuth, async (c) => {
-  const token = normalizeToken(c.req.param('token'))
+  const token = normalizeToken(c.req.param('token') ?? '')
   if (!isValidToken(token)) return new Response(JSON.stringify({ error: 'invalid token' }), { status: 400, headers: noStoreHeaders() })
   const body = await c.req.json<{ lat: number; lng: number }>()
   if (!areValidCoordinates(body.lat, body.lng)) {
@@ -154,14 +154,14 @@ app.post('/api/location/:token', requireWriteAuth, async (c) => {
 })
 
 app.get('/api/history/:token', async (c) => {
-  const token = normalizeToken(c.req.param('token'))
+  const token = normalizeToken(c.req.param('token') ?? '')
   if (!isValidToken(token)) return new Response(JSON.stringify({ error: 'invalid token' }), { status: 400, headers: noStoreHeaders() })
   const raw = await c.env.LOCATIONS.get(`history:${token}`, 'json') as HistoryEntry[] | null
   return new Response(JSON.stringify({ items: raw ?? [] }), { headers: noStoreHeaders() })
 })
 
 app.post('/api/history/:token', requireWriteAuth, async (c) => {
-  const token = normalizeToken(c.req.param('token'))
+  const token = normalizeToken(c.req.param('token') ?? '')
   if (!isValidToken(token)) return new Response(JSON.stringify({ error: 'invalid token' }), { status: 400, headers: noStoreHeaders() })
   const body = await c.req.json<{ label?: string; lat: number; lng: number }>()
   if (!areValidCoordinates(body.lat, body.lng)) {
@@ -182,7 +182,7 @@ app.post('/api/history/:token', requireWriteAuth, async (c) => {
 })
 
 app.delete('/api/history/:token/:index', requireWriteAuth, async (c) => {
-  const token = normalizeToken(c.req.param('token'))
+  const token = normalizeToken(c.req.param('token') ?? '')
   if (!isValidToken(token)) return new Response(JSON.stringify({ error: 'invalid token' }), { status: 400, headers: noStoreHeaders() })
   const index = Number(c.req.param('index'))
   const raw = await c.env.LOCATIONS.get(`history:${token}`, 'json') as HistoryEntry[] | null
@@ -195,7 +195,7 @@ app.delete('/api/history/:token/:index', requireWriteAuth, async (c) => {
 
 app.get('/api/module/:client/:token', async (c) => {
   const { client } = c.req.param()
-  const token = normalizeToken(c.req.param('token'))
+  const token = normalizeToken(c.req.param('token') ?? '')
   if (!isValidToken(token)) return textNoStoreResponse('invalid token')
   const workerBase = new URL(c.req.url).origin
   const relayUrl = `${workerBase}/script/${token}.js`
@@ -239,13 +239,13 @@ hostname = gs-loc.apple.com, gs-loc-cn.apple.com
 ios-pin = type=http-response,pattern=^https:\/\/gs-loc(-cn)?\.apple\.com\/clls\/wloc,requires-body=1,max-size=0,script-path=${relayUrl}
 `
   }
-  const content = templates[client]
+  const content = templates[client ?? '']
   if (!content) return new Response('unsupported client', { status: 404, headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store, no-cache, must-revalidate, max-age=0' } })
   return textNoStoreResponse(content)
 })
 
 async function relayAppleNetworkLocation(c: any) {
-  const token = normalizeToken(c.req.param('token'))
+  const token = normalizeToken(c.req.param('token') ?? '')
   if (!isValidToken(token)) return new Response(JSON.stringify({ error: 'invalid token' }), { status: 400, headers: noStoreHeaders() })
   const loc = await c.env.LOCATIONS.get(`loc:${token}`, 'json') as StoredLocation | null
   if (!loc) return c.json({ error: 'location not found' }, 404)
@@ -277,7 +277,7 @@ app.post('/apple/clls/wloc/:token', relayAppleNetworkLocation)
 app.post('/relay/apple/:token/clls/wloc', relayAppleNetworkLocation)
 
 app.get('/script/:token.js', (c) => {
-  const token = normalizeToken(c.req.param('token'))
+  const token = normalizeToken(c.req.param('token') ?? '')
   if (!isValidToken(token)) return new Response('// invalid token', { status: 400, headers: { 'content-type': 'application/javascript; charset=utf-8', 'cache-control': 'no-store, no-cache, must-revalidate, max-age=0' } })
   const workerBase = new URL(c.req.url).origin
   const js = `const token = ${JSON.stringify(token)};
